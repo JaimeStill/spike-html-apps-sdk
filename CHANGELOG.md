@@ -10,8 +10,8 @@ All notable changes to `@jaimestill/spike-html-apps-sdk` are documented here. Th
 
 ### Added
 
-- The SDK layer, first released under this name: copied from spike-html-packages-sdk v0.1.0, the
-  API client, auth, router, and domain-service declarations, types only.
+- The SDK layer, first released under this name: copied from spike-html-packages-sdk v0.1.0
+  (9d10ca6), the API client, auth, router, and domain-service declarations, types only.
 - The release by tag: `v<version>`, whose tree is the pack, with the tarball on its GitHub
   release.
 
