@@ -1,6 +1,7 @@
 # pnpm's settings for the install (mise run install); the repository is one package, so it lists
 # no packages.
-# From spike-html-packages-sdk (9d10ca6): pnpm-workspace.yaml.
+# Adapted from spike-html-packages-sdk (9d10ca6): pnpm-workspace.yaml, with typescript-eslint 8.72.1
+# excluded from the minimum release age.
 #
 # unrs-resolver, under eslint-plugin-import-x and eslint-import-resolver-typescript, has a
 # postinstall that fetches its native binding when the optional dependency holding it is missing;

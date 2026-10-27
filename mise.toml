@@ -1,9 +1,9 @@
-# From spike-html-packages-sdk (9d10ca6): mise.toml.
+# Adapted from spike-html-packages-sdk (9d10ca6): mise.toml, renamed.
 # Tasks never install a missing tool; mise run install is the one task that reads the network.
 [settings]
 task.run_auto_install = false
 
-# spike-html-apps' toolchain at its pins, less the browser and what only its consumer tier ran.
+# The SDK's toolchain.
 [tools]
 actionlint = "1.7.12"
 node = "26.12.1"

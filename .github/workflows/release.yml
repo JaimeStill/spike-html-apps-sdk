@@ -2,7 +2,8 @@
 # yet, a green check, then the pack's tree committed beside the pushed commit, on no branch, and
 # tagged, with a GitHub release from CHANGELOG.md and the tarball attached. A push whose version is
 # already tagged changes nothing.
-# From spike-html-packages-sdk (9d10ca6): .github/workflows/release.yml.
+# Adapted from spike-html-packages-sdk (9d10ca6): .github/workflows/release.yml, renamed and its
+# pins current.
 name: Release
 
 on:
