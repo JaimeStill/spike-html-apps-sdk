@@ -1,0 +1,66 @@
+# From spike-html-packages-sdk (9d10ca6): mise.toml.
+# Tasks never install a missing tool; mise run install is the one task that reads the network.
+[settings]
+task.run_auto_install = false
+
+# spike-html-apps' toolchain at its pins, less the browser and what only its consumer tier ran.
+[tools]
+actionlint = "1.7.12"
+node = "26.12.1"
+pnpm = "12.15.0"
+shellcheck = "0.11.0"
+"github:microsoft/typescript-go" = { version = "7.0.2", version_prefix = "typescript/v", bin_path = "package/lib" }
+
+[tasks.preflight]
+description = "Fail naming mise run install when a tool the tasks need is missing"
+hide = true
+run = "scripts/preflight.sh"
+
+[tasks.lint]
+description = "Run the linters: ESLint, Prettier, shellcheck, and actionlint"
+depends = ["lint:eslint", "lint:format", "lint:shell", "lint:workflows"]
+
+[tasks."lint:eslint"]
+description = "Lint with ESLint, the layer's imports included"
+depends = ["preflight"]
+run = "pnpm exec eslint ."
+
+[tasks."lint:format"]
+description = "Check the format with Prettier"
+depends = ["preflight"]
+run = "pnpm exec prettier --check ."
+
+[tasks."lint:shell"]
+description = "Shellcheck the scripts"
+run = "shellcheck scripts/*.sh"
+
+# actionlint shellchecks each run: block too, with the shellcheck pinned above.
+[tasks."lint:workflows"]
+description = "Lint the GitHub Actions workflows with actionlint"
+run = "actionlint"
+
+[tasks.types]
+description = "Type-check the declarations with tsc"
+run = "tsc --noEmit -p ."
+
+[tasks.build]
+description = "Build src/ into dist/: the declarations, copied as written"
+run = "scripts/build.sh"
+
+[tasks."test:unit"]
+description = "Run the unit tier on the declarations, the lint, and a pack of the build"
+depends = ["preflight", "build"]
+run = "node --test 'test/unit/*.test.js'"
+
+[tasks.check]
+description = "Run every check; reads no network; writes dist/"
+depends = ["lint", "types", "build", "test:unit"]
+
+[tasks.install]
+description = "Install the pins and node_modules; reads the network"
+run = ["mise install", "pnpm install --frozen-lockfile"]
+
+[tasks.currency]
+description = "Report every mise tool, package.json pin, and action pin behind its latest, exiting nonzero if any"
+run = "scripts/currency.sh"
+quiet = true

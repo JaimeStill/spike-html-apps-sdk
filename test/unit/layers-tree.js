@@ -1,0 +1,159 @@
+// The layer's import cases as one file tree in the repository's shape: a file per forbidden import
+// and form, each with the rules that catch it, and the imports the layer may make in the same
+// layout. Every file is a declaration, as every source is. layers.test.js lints it.
+// From spike-html-packages-sdk (9d10ca6): test/unit/layers-tree.js.
+
+import { spawnSync } from "node:child_process";
+import { mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { dirname, join, relative } from "node:path";
+
+const root = join(import.meta.dirname, "../..");
+
+/** The package's manifest as it stands, which the tree carries, so each import is judged against
+ * it. */
+export const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+const sdk = manifest.name;
+
+/** The sibling layers and the one package of spike-html-apps, which the SDK never imports. */
+const siblings = ["foundation", "components"].map((layer) => sdk.replace(/sdk$/, layer));
+const one = sdk.replace(/-sdk$/, "");
+
+// The rules a case names: the layer table and the two manifest rules.
+export const table = "boundaries/dependencies";
+export const extraneous = "import-x/no-extraneous-dependencies";
+export const relativePackages = "import-x/no-relative-packages";
+/** The rules the lint flags the tree with, no-unresolved among them, which no case may draw. */
+export const watched = [table, extraneous, relativePackages, "import-x/no-unresolved"];
+
+/** An edge in each of the four import forms, one file per form, each named for the edge and its
+ * form: a side-effect import, a type import, a re-export, and an import(). */
+function forms(base, specifier) {
+  return {
+    [`${base}.d.ts`]: `import "${specifier}";`,
+    [`${base}-type.d.ts`]: `import type { X } from "${specifier}";`,
+    [`${base}-export.d.ts`]: `export * from "${specifier}";`,
+    [`${base}-dynamic.d.ts`]: `await import("${specifier}");`,
+  };
+}
+
+/** `files`, each path to its source and the rules that flag it, sorted. */
+function by(rules, files) {
+  return Object.fromEntries(
+    Object.entries(files).map(([path, source]) => [path, { source, rules: [...rules].sort() }]),
+  );
+}
+
+// Each file holds one import, named for what it imports.
+export const violations = {
+  // Any package by name: the manifest declares no dependency, and the table allows no package. A
+  // devDependency ships nothing, and the package's own name resolves to its build, not its src/.
+  ...by([table, extraneous], {
+    "src/lit.d.ts": `import type { TemplateResult } from "lit";`,
+    ...forms("src/forms/lit", "lit"),
+    ...forms("src/forms/foundation", `${siblings[0]}/dom.js`),
+    ...forms("src/forms/components", `${siblings[1]}/status-badge.js`),
+    "src/one.d.ts": `import type { Client } from "${one}/sdk/api.js";`,
+    ...forms("src/forms/typescript", "typescript"),
+    ...forms("src/forms/self-name", `${sdk}/api.js`),
+  }),
+  // A package by a relative path into node_modules/.
+  ...by([table, relativePackages], {
+    "src/lit-path.d.ts": `import type { X } from "../node_modules/lit/index.js";`,
+  }),
+  // A value import of a declaration file, in each value form, an inline `type` specifier among
+  // them, since verbatimModuleSyntax keeps that import.
+  ...by([table], {
+    "src/api-value.d.ts": `import { createClient } from "./api.js";`,
+    "src/api-side-effect.d.ts": `import "./api.js";`,
+    "src/api-inline-type.d.ts": `import { type Client } from "./api.js";`,
+    "src/api-export.d.ts": `export { createClient } from "./api.js";`,
+    "src/api-export-all.d.ts": `export * from "./api.js";`,
+    "src/api-dynamic.d.ts": `await import("./api.js");`,
+    "src/nested/api-value.d.ts": `import { createClient } from "../api.js";`,
+  }),
+};
+
+/** `cases`, each path to its source alone. */
+export const sources = (cases) =>
+  Object.fromEntries(Object.entries(cases).map(([path, { source }]) => [path, source]));
+
+// Every import the layer may make, a type import or a type export in each place, with names that
+// hold dots, which a rule must tell from . and .. segments.
+export const allowed = {
+  "src/service.d.ts": `import type { Client } from "./api.js";\nexport type { Result } from "./api.js";`,
+  "src/api-typeof.d.ts": `import type { createClient } from "./api.js";\nexport type F = typeof createClient;`,
+  "src/api-export-all-type.d.ts": `export type * from "./api.js";`,
+  "src/nested/own.d.ts": `import type { Client } from "../api.js";`,
+  "src/nested/index.d.ts": `import type { X } from "..";\nexport type * from "./";`,
+  "src/dotted.d.ts": `import type { Y } from "./..x/y.js";\nimport type { A } from "./.well-known/a.js";`,
+};
+
+/** The files the cases import that no case is: the declarations and the package's build, which
+ * its own name resolves to. */
+const targets = {
+  "src/api.d.ts": [
+    "export interface Client {}",
+    "export type Result<T> = { ok: true; data: T } | { ok: false };",
+    "export declare function createClient(): Client;",
+  ].join("\n"),
+  "src/index.d.ts": "export interface X {}",
+  "src/..x/y.d.ts": "export interface Y {}",
+  "src/.well-known/a.d.ts": "export interface A {}",
+  "dist/api.d.ts": "export interface X {}",
+};
+
+/** The packages the cases name, as stubs in node_modules/: lit, the siblings, the one package,
+ * and typescript, a devDependency, each a module and its types at every subpath. */
+const externals = ["lit", ...siblings, one, "typescript"];
+const stub = (name) => ({
+  "package.json": JSON.stringify({
+    name,
+    type: "module",
+    exports: {
+      ".": { types: "./index.d.ts", default: "./index.js" },
+      "./*": { types: "./index.d.ts", default: "./index.js" },
+    },
+  }),
+  "index.js": "export {};",
+  "index.d.ts": [
+    "export interface X {}",
+    "export interface Client {}",
+    "export interface TemplateResult {}",
+  ].join("\n"),
+});
+
+/** Writes `files` under `dir` with the manifest, the targets, the externals, and a link to the
+ * package itself, as an install of its own name lays it out, so every import resolves and the lint
+ * judges it. Returns the code files written under src/. */
+export function writeTree(dir, files) {
+  const written = { ...files, ...targets, "package.json": JSON.stringify(manifest) };
+  for (const name of externals) {
+    for (const [path, source] of Object.entries(stub(name))) {
+      written[join("node_modules", name, path)] = source;
+    }
+  }
+  for (const [path, source] of Object.entries(written)) {
+    mkdirSync(dirname(join(dir, path)), { recursive: true });
+    writeFileSync(join(dir, path), `${source}\n`);
+  }
+  const self = join(dir, "node_modules", sdk);
+  mkdirSync(dirname(self), { recursive: true });
+  symlinkSync(relative(dirname(self), dir), self);
+  return Object.keys(written).filter((path) => path.startsWith("src/") && /\.(js|ts)$/.test(path));
+}
+
+/** ESLint's JSON report on the tree under `dir`'s src/. -c takes the repo's config, whose patterns
+ * then match from the working directory, the tree, and whose plugins load from the repo's
+ * node_modules. Throws when ESLint doesn't run or exits other than 0 or 1. */
+export function lint(dir) {
+  const eslint = join(root, "node_modules", ".bin", "eslint");
+  const run = spawnSync(eslint, ["-c", join(root, "eslint.config.js"), "-f", "json", "src"], {
+    cwd: dir,
+    encoding: "utf8",
+  });
+  if (run.error) throw new Error(`eslint didn't run: ${run.error}`);
+  if (run.status !== 0 && run.status !== 1) {
+    throw new Error(`eslint exited ${run.status}: ${run.stderr}`);
+  }
+  return JSON.parse(run.stdout);
+}

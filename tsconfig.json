@@ -1,0 +1,17 @@
+// The types check, mise run types: tsc reads the declarations in src/ and emits nothing, since a
+// declaration file has nothing to emit; mise run build copies them into dist/ as written.
+// From spike-html-packages-sdk (9d10ca6): tsconfig.json.
+{
+  "compilerOptions": {
+    "target": "es2024",
+    "lib": ["es2024", "dom", "dom.iterable"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "types": [],
+    "strict": true,
+    "verbatimModuleSyntax": true,
+    "noEmit": true,
+    "skipLibCheck": false
+  },
+  "include": ["src"]
+}

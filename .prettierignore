@@ -1,0 +1,13 @@
+# Prettier formats the code and the JSON only: its default run would also rewrite the Markdown, the
+# YAML, and pnpm-lock.yaml. Every file is ignored, then every directory and the code and JSON files
+# are let back in. Prettier also skips what .gitignore lists.
+# From spike-html-packages-sdk (9d10ca6): .prettierignore.
+*
+!*/
+!*.js
+!*.ts
+!*.json
+# marathon working files.
+.claude/plans/
+.claude/briefs/
+node_modules

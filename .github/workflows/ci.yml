@@ -1,0 +1,22 @@
+# From spike-html-packages-sdk (9d10ca6): .github/workflows/ci.yml.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: jdx/mise-action@v5.2.4
+
+      - name: mise run install
+        run: mise run install
+
+      - name: mise run check
+        run: mise run check
