@@ -8,6 +8,8 @@
 # pnpm installs that dependency, so the script isn't run.
 allowBuilds:
   unrs-resolver: false
+# typescript-eslint 8.72.1 was younger than pnpm's minimum release age when the layer took it;
+# the entries go once it is older, at the next currency pass.
 minimumReleaseAgeExclude:
   - '@typescript-eslint/eslint-plugin@8.72.1'
   - '@typescript-eslint/parser@8.72.1'

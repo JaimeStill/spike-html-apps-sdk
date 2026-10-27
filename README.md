@@ -49,6 +49,12 @@ mise run currency   # report every tool, package, and action pin behind its late
 A push to main whose `package.json` version has no tag yet releases it: the check, then the pack
 committed and tagged, and a GitHub release from `CHANGELOG.md`.
 
+## Provenance
+
+The layer is copied from spike-html-packages-sdk at 9d10ca6, its v0.1.0. Each copied file that
+takes comments names its source in a provenance line; the JSON files, which take none, carry no
+line.
+
 ## License
 
 [Apache License 2.0](LICENSE).
