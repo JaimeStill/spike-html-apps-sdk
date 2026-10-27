@@ -1,0 +1,24 @@
+# pnpm's settings for the install (mise run install); the repository is one package, so it lists
+# no packages.
+# Adapted from spike-html-packages-sdk (9d10ca6): pnpm-workspace.yaml, with typescript-eslint 8.72.1
+# excluded from the minimum release age.
+#
+# unrs-resolver, under eslint-plugin-import-x and eslint-import-resolver-typescript, has a
+# postinstall that fetches its native binding when the optional dependency holding it is missing;
+# pnpm installs that dependency, so the script isn't run.
+allowBuilds:
+  unrs-resolver: false
+# typescript-eslint 8.72.1 was younger than pnpm's minimum release age when the layer took it;
+# the entries go once it is older, at the next currency pass.
+minimumReleaseAgeExclude:
+  - '@typescript-eslint/eslint-plugin@8.72.1'
+  - '@typescript-eslint/parser@8.72.1'
+  - '@typescript-eslint/project-service@8.72.1'
+  - '@typescript-eslint/scope-manager@8.72.1'
+  - '@typescript-eslint/tsconfig-utils@8.72.1'
+  - '@typescript-eslint/type-utils@8.72.1'
+  - '@typescript-eslint/types@8.72.1'
+  - '@typescript-eslint/typescript-estree@8.72.1'
+  - '@typescript-eslint/utils@8.72.1'
+  - '@typescript-eslint/visitor-keys@8.72.1'
+  - typescript-eslint@8.72.1
