@@ -1,7 +1,7 @@
 // The layer's import cases as one file tree in the repository's shape: a file per forbidden import
 // and form, each with the rules that catch it, and the imports the layer may make in the same
 // layout. Every file is a declaration, as every source is. layers.test.js lints it.
-// From spike-html-packages-sdk (9d10ca6): test/unit/layers-tree.js.
+// Adapted from spike-html-packages-sdk (9d10ca6): test/unit/layers-tree.js, renamed.
 
 import { spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
@@ -14,9 +14,9 @@ const root = join(import.meta.dirname, "../..");
 export const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
 const sdk = manifest.name;
 
-/** The sibling layers and the one package of spike-html-apps, which the SDK never imports. */
+/** The sibling layers and spike-html-apps' app, which the SDK never imports. */
 const siblings = ["foundation", "components"].map((layer) => sdk.replace(/sdk$/, layer));
-const one = sdk.replace(/-sdk$/, "");
+const app = sdk.replace(/-sdk$/, "");
 
 // The rules a case names: the layer table and the two manifest rules.
 export const table = "boundaries/dependencies";
@@ -52,7 +52,7 @@ export const violations = {
     ...forms("src/forms/lit", "lit"),
     ...forms("src/forms/foundation", `${siblings[0]}/dom.js`),
     ...forms("src/forms/components", `${siblings[1]}/status-badge.js`),
-    "src/one.d.ts": `import type { Client } from "${one}/sdk/api.js";`,
+    "src/app.d.ts": `import type { Client } from "${app}/main.js";`,
     ...forms("src/forms/typescript", "typescript"),
     ...forms("src/forms/self-name", `${sdk}/api.js`),
   }),
@@ -102,9 +102,9 @@ const targets = {
   "dist/api.d.ts": "export interface X {}",
 };
 
-/** The packages the cases name, as stubs in node_modules/: lit, the siblings, the one package,
+/** The packages the cases name, as stubs in node_modules/: lit, the siblings, the app,
  * and typescript, a devDependency, each a module and its types at every subpath. */
-const externals = ["lit", ...siblings, one, "typescript"];
+const externals = ["lit", ...siblings, app, "typescript"];
 const stub = (name) => ({
   "package.json": JSON.stringify({
     name,
