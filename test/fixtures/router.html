@@ -1,0 +1,20 @@
+<!doctype html>
+<!-- The router's shell page: the server sends it for every path with no extension. It loads the
+     built router by its package specifier, through an import map, as a consumer would, and
+     router-app.js gives the tests setup(), which makes and starts nothing until called. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>router fixture</title>
+    <script type="importmap">
+      { "imports": { "@jaimestill/spike-html-apps-sdk/": "/dist/" } }
+    </script>
+    <script type="module" src="/test/fixtures/router-app.js"></script>
+  </head>
+  <body>
+    <nav id="links"></nav>
+    <form id="post" method="post"><button id="submit" type="submit">Post</button></form>
+    <main id="outlet"></main>
+    <p id="section">A section a fragment link scrolls to.</p>
+  </body>
+</html>

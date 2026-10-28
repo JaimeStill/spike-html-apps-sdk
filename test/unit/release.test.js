@@ -1,7 +1,8 @@
 // The release's integrity: a pnpm pack of the build, extracted, against package.json's files and
 // exports and against its license, by release.js's releaseProblems, as it stands and in scratch
-// copies with one fault each. It packs the dist/ that mise run build writes.
-// From spike-html-packages-sdk (9d10ca6): test/unit/release.test.js.
+// copies with one fault each; and the pack's public subpaths, resolved through the package's own
+// name, with its internal module refused. It packs the dist/ that mise run build writes.
+// Adapted from spike-html-packages-sdk (9d10ca6): test/unit/release.test.js.
 
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -9,11 +10,27 @@ import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:f
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, describe, test } from "node:test";
-import { listFiles, releaseProblems } from "./release.js";
+import { listFiles, releaseProblems, resolveSelf } from "./release.js";
 
 const root = join(import.meta.dirname, "../..");
 const src = join(root, "src");
 const scratches = [];
+
+// The public subpaths, which package.json's exports lists: each module an app imports.
+const publics = [
+  "./api.js",
+  "./auth.js",
+  "./router.js",
+  "./service.js",
+  "./events.js",
+  "./events/nats.js",
+];
+// Node's condition sets, its defaults and the types condition TypeScript adds, with the build file
+// a public subpath's base resolves to under each.
+const conditions = [
+  [[], ".js"],
+  [["--conditions=types"], ".d.ts"],
+];
 
 /** A new temporary directory, removed after the run. */
 function scratchDir() {
@@ -42,7 +59,7 @@ function faulted(change) {
   const manifest = JSON.parse(readFileSync(join(copy, "package.json"), "utf8"));
   change(copy, manifest);
   writeFileSync(join(copy, "package.json"), JSON.stringify(manifest));
-  return releaseProblems(copy, src);
+  return releaseProblems(copy, src, publics);
 }
 
 const remove = (path) => (dir) => rmSync(join(dir, path));
@@ -55,17 +72,40 @@ describe("release pack", () => {
   });
 
   test("the pack is the release that files and exports declare", () => {
-    assert.deepEqual(releaseProblems(pack, src), []);
+    assert.deepEqual(releaseProblems(pack, src, publics), []);
+  });
+
+  test("each public subpath resolves through the package's name to its build", () => {
+    for (const [flags, extension] of conditions) {
+      assert.deepEqual(
+        resolveSelf(pack, publics, flags),
+        publics.map((subpath) => ({
+          path: `dist/${subpath.slice(2, -".js".length)}${extension}`,
+        })),
+      );
+    }
+  });
+
+  test("the internal eventstream.js doesn't resolve through the package's name", () => {
+    for (const [flags] of conditions) {
+      assert.deepEqual(resolveSelf(pack, ["./eventstream.js"], flags), [
+        { code: "ERR_PACKAGE_PATH_NOT_EXPORTED" },
+      ]);
+    }
   });
 
   const faults = {
-    "a .d.ts source with no copy": [
-      remove("dist/auth.d.ts"),
-      "src/auth.d.ts has no built dist/auth.d.ts",
+    "a .ts module with no emitted .js": [
+      remove("dist/auth.js"),
+      "src/auth.ts has no built dist/auth.js",
     ],
-    "a runtime module in the build": [
-      (dir) => writeFileSync(join(dir, "dist/api.js"), ""),
-      "dist/api.js is built from no source",
+    "a .ts module with no emitted .d.ts": [
+      remove("dist/service.d.ts"),
+      "src/service.ts has no built dist/service.d.ts",
+    ],
+    "a stray built file": [
+      (dir) => writeFileSync(join(dir, "dist/old.js"), ""),
+      "dist/old.js is built from no source",
     ],
     "a stray file in the pack": [
       (dir) => writeFileSync(join(dir, "notes.md"), ""),
@@ -73,23 +113,53 @@ describe("release pack", () => {
     ],
     "a pack without its README": [remove("README.md"), "the pack has no README.md"],
     "an export at a missing file": [
-      (_, copy) => (copy.exports["./gone.js"] = { types: "./dist/gone.d.ts" }),
-      'exports["./gone.js"] resolves to ./dist/gone.d.ts, which isn\'t built',
+      (_, copy) =>
+        (copy.exports["./gone.js"] = { types: "./dist/gone.d.ts", default: "./dist/gone.js" }),
+      'exports["./gone.js"] resolves to ./dist/gone.js, which isn\'t built',
     ],
     "a types target outside dist/": [
-      (_, copy) => (copy.exports["./api.js"] = { types: "./src/api.d.ts" }),
-      'exports["./api.js"] resolves to ./src/api.d.ts, which isn\'t built',
+      (_, copy) => (copy.exports["./api.js"] = { types: "./src/api.ts", default: "./dist/api.js" }),
+      'exports["./api.js"] resolves to ./src/api.ts, which isn\'t built',
     ],
-    "a declaration exported as a runtime module": [
-      (_, copy) => (copy.exports["./*.js"] = { types: "./dist/*.d.ts", default: "./dist/*.js" }),
-      'exports["./router.js"] resolves to ./dist/router.js, which isn\'t built',
+    "a public subpath whose types target isn't built": [
+      (_, copy) => (copy.exports["./router.js"].types = "./dist/router.ts"),
+      'exports["./router.js"] resolves to ./dist/router.ts, which isn\'t built',
     ],
     "a built file no export reaches": [
-      (_, copy) => delete copy.exports["./*.js"],
-      "dist/service.d.ts is reachable through no export",
+      (_, copy) => (copy.exports["./auth.js"] = { types: "./dist/auth.d.ts" }),
+      "dist/auth.js is reachable through no export",
+    ],
+    "an export with only a types condition": [
+      (_, copy) => (copy.exports["./auth.js"] = { types: "./dist/auth.d.ts" }),
+      'exports["./auth.js"] isn\'t a types and a default condition',
+    ],
+    "an export with a third condition": [
+      (_, copy) =>
+        (copy.exports["./api.js"] = { import: "./dist/api.js", ...copy.exports["./api.js"] }),
+      'exports["./api.js"] isn\'t a types and a default condition',
+    ],
+    "a public subpath missing from exports": [
+      (_, copy) => delete copy.exports["./events/nats.js"],
+      'exports has no "./events/nats.js"',
+    ],
+    "a pattern export, which reaches the internal module": [
+      (_, copy) => (copy.exports["./*.js"] = { types: "./dist/*.d.ts", default: "./dist/*.js" }),
+      "./eventstream.js is internal, but resolves through the package's name",
+    ],
+    "an export of the internal module": [
+      (_, copy) =>
+        (copy.exports["./eventstream.js"] = {
+          types: "./dist/eventstream.d.ts",
+          default: "./dist/eventstream.js",
+        }),
+      'exports["./eventstream.js"] isn\'t a public subpath',
     ],
     "a pattern export that reaches nothing": [
-      (_, copy) => (copy.exports["./apps/*.js"] = { types: "./dist/apps/*.d.ts" }),
+      (_, copy) =>
+        (copy.exports["./apps/*.js"] = {
+          types: "./dist/apps/*.d.ts",
+          default: "./dist/apps/*.js",
+        }),
       'exports["./apps/*.js"] reaches no built file',
     ],
     "a pack without its LICENSE": [remove("LICENSE"), "LICENSE is missing"],
@@ -102,8 +172,8 @@ describe("release pack", () => {
       "package.json declares license MIT, not Apache-2.0",
     ],
     "a build outside files": [
-      (_, copy) => (copy.files = ["dist/api.d.ts"]),
-      "dist/router.d.ts isn't under package.json's files",
+      (_, copy) => (copy.files = ["dist/api.js"]),
+      "dist/router.js isn't under package.json's files",
     ],
   };
   for (const [fault, [change, problem]] of Object.entries(faults)) {

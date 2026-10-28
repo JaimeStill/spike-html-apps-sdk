@@ -1,21 +1,56 @@
 {
   "name": "@jaimestill/spike-html-apps-sdk",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "license": "Apache-2.0",
   "type": "module",
   "files": [
     "dist"
   ],
   "exports": {
-    "./*.js": {
-      "types": "./dist/*.d.ts"
+    "./api.js": {
+      "types": "./dist/api.d.ts",
+      "default": "./dist/api.js"
+    },
+    "./auth.js": {
+      "types": "./dist/auth.d.ts",
+      "default": "./dist/auth.js"
+    },
+    "./router.js": {
+      "types": "./dist/router.d.ts",
+      "default": "./dist/router.js"
+    },
+    "./service.js": {
+      "types": "./dist/service.d.ts",
+      "default": "./dist/service.js"
+    },
+    "./events.js": {
+      "types": "./dist/events.d.ts",
+      "default": "./dist/events.js"
+    },
+    "./events/nats.js": {
+      "types": "./dist/events/nats.d.ts",
+      "default": "./dist/events/nats.js"
+    }
+  },
+  "peerDependencies": {
+    "@nats-io/jetstream": "^3.4.0",
+    "@nats-io/nats-core": "^3.4.0"
+  },
+  "peerDependenciesMeta": {
+    "@nats-io/jetstream": {
+      "optional": true
+    },
+    "@nats-io/nats-core": {
+      "optional": true
     }
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
+    "@nats-io/jetstream": "3.4.0",
+    "@nats-io/nats-core": "3.4.0",
     "eslint": "10.13.0",
     "eslint-import-resolver-typescript": "4.4.5",
-    "eslint-plugin-boundaries": "7.3.0",
+    "eslint-plugin-boundaries": "7.4.0",
     "eslint-plugin-import-x": "4.17.1",
     "globals": "17.13.0",
     "prettier": "3.9.10",
