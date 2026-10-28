@@ -11,6 +11,16 @@ pnpm = "12.15.0"
 shellcheck = "0.11.0"
 "github:microsoft/typescript-go" = { version = "7.0.2", version_prefix = "typescript/v", bin_path = "package/lib" }
 
+# The browser tier's browser. Chrome for Testing publishes no checksums: take the sha256 and size
+# from the download by hand at each bump.
+[tools."http:chrome-headless-shell"]
+version = "156.0.8078.73"
+version_list_url = "https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions.json"
+version_json_path = ".channels.Stable.version"
+
+[tools."http:chrome-headless-shell".platforms]
+linux-x64 = { url = "https://storage.googleapis.com/chrome-for-testing-public/{{ version }}/linux64/chrome-headless-shell-linux64.zip", checksum = "sha256:77eb8d52798efc7a857ab61abcc62a456d8ea9635b02341d06dffee2761768c8", size = "126938225" }
+
 [tasks.preflight]
 description = "Fail naming mise run install when a tool the tasks need is missing"
 hide = true
@@ -52,9 +62,14 @@ description = "Run the unit tier on the sources, the lint, and a pack of the bui
 depends = ["preflight", "build"]
 run = "node --test 'test/unit/*.test.js'"
 
+[tasks."test:browser"]
+description = "Run the browser tier on dist/ in the pinned chrome-headless-shell"
+depends = ["preflight browser", "build"]
+run = "BROWSER_EXECUTABLE=$(mise which chrome-headless-shell) node --test 'test/browser/*.test.js'"
+
 [tasks.check]
 description = "Run every check; reads no network; writes dist/"
-depends = ["lint", "types", "build", "test:unit"]
+depends = ["lint", "types", "build", "test:unit", "test:browser"]
 
 [tasks.install]
 description = "Install the pins and node_modules; reads the network"

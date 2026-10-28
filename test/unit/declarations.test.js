@@ -251,9 +251,92 @@ export declare class StreamError extends Error {
   },
   {
     file: "router.d.ts",
-    from: "/** Makes a router over `routes`. */\nexport declare function createRouter(routes: Routes, options: RouterOptions): Router;\n",
-    to: "",
-    reason: "createRouter has no runtime yet, and a declaration of it would promise an export",
+    from: `/** How a router is made: the element it mounts each route's element into, the base path the app
+ * is served under ("/" by default), which every pattern and navigate() path is relative to, and
+ * the element mounted when nothing matches. */
+`,
+    to: `/** How a router is made: the element it mounts each route's element into; the base path the app
+ * is served under, which every pattern and navigate() path is relative to: this option, else the
+ * pathname of the href of the document's <base> element, else "/"; the element mounted when
+ * nothing matches; and the element mounted when a route fails. */
+`,
+    reason:
+      'the base falls back to the <base> element\'s href before "/", and a failed route mounts',
+  },
+  {
+    file: "router.d.ts",
+    from: `    notFound?: string | Loader;
+`,
+    to: `    notFound?: string | Loader;
+    error?: string | Loader;
+`,
+    reason: "the error option names the element a failed route mounts, as a route's tag or loader",
+  },
+  {
+    file: "router.d.ts",
+    from: `/** An app's router. Once started, it intercepts every same-document navigation (a plain link's
+ * click included) through the Navigation API's navigate event, matches the destination with
+ * URLPattern, and replaces the outlet's content with the route's element, each path param set on
+ * it as an attribute of the same name. */
+`,
+    to: `/** An app's router. Once started, it intercepts every same-origin navigation under its base (a
+ * plain link's click, back and forward, and navigate() included; a download, a fragment-only
+ * change, a form post, and a reload are left to the browser) through the Navigation API's navigate
+ * event, matches the destination with URLPattern, and replaces the outlet's content with the
+ * route's element, each path param set on it as an attribute of the same name. A route fails when
+ * its loader rejects or its tag isn't a defined custom element; on a navigation the router didn't
+ * start itself, whose URL is already committed, the outlet then holds the error element (or
+ * nothing) and the navigation fails (navigateerror). It dispatches "change" after each mount and
+ * each query change, with \`current\` already updated. */
+`,
+    reason:
+      "the router names what it leaves to the browser, how a route fails, and its change event",
+  },
+  {
+    file: "router.d.ts",
+    from: `export interface Router {`,
+    to: `export interface Router extends EventTarget {`,
+    reason: "the router is an EventTarget, which dispatches change",
+  },
+  {
+    file: "router.d.ts",
+    from: `    /** The route the current location matches, or undefined when none does. */
+`,
+    to: `    /** The route the current location matches, or undefined when none does or its route failed. */
+`,
+    reason: "current is undefined after a failed route too",
+  },
+  {
+    file: "router.d.ts",
+    from: `    /** Mounts the current location's route and begins intercepting navigations. */
+    start(): void;
+`,
+    to: `    /** Mounts the current location's route and begins intercepting navigations; resolves once the
+     * route is mounted, and rejects, with the error element mounted, when the route fails. */
+    start(): Promise<void>;
+`,
+    reason: "start() returns a promise of the first mount, which rejects when the route fails",
+  },
+  {
+    file: "router.d.ts",
+    from: `    /** Navigates to \`path\`, relative to the base, and resolves once its element is mounted. */
+`,
+    to: `    /** Loads the route at \`path\`, relative to the base, then navigates to it, and resolves once its
+     * element is mounted. When the route fails it rejects before navigating, leaving the URL, the
+     * outlet, and \`current\` unchanged. */
+`,
+    reason: "navigate() loads the route before it navigates, and fails without navigating",
+  },
+  {
+    file: "router.d.ts",
+    from: `     * replacing the history entry by default; the route's element stays mounted. */
+    query(changes: Readonly<Record<string, string | undefined>>, options?: NavigateOptions): void;
+`,
+    to: `     * replacing the history entry by default; the route's element stays mounted. Resolves once
+     * \`current.query\` is updated. */
+    query(changes: Readonly<Record<string, string | undefined>>, options?: NavigateOptions): Promise<void>;
+`,
+    reason: "query() returns a promise that resolves once current.query is updated",
   },
 ];
 
