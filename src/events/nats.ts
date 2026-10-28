@@ -118,9 +118,10 @@ function decode(msg: JsMsg): CloudEvent {
  * an ordered consumer of its own: deliver-all with no cursor, which starts at the oldest event the
  * stream keeps, or from the stream sequence after the cursor, which the server moves up to the
  * oldest kept when it is gone. A cursor is the delivered message's stream sequence as a decimal
- * string; any string that isn't a positive decimal integer fails the read. A read's `types` are
- * its consumer's filter subjects, since an event's type is its subject, and the read also checks
- * each event's type against them, so a type holding a NATS wildcard still matches exactly.
+ * string; any string that isn't a positive decimal integer, or one past the stream's last sequence,
+ * fails the read. A read's `types` are its consumer's filter subjects, since an event's type is
+ * its subject, and the read also checks each event's type against them, so a type holding a NATS
+ * wildcard still matches exactly.
  *
  * The reads share one connection, opened by the first and reopened by a read after it is lost.
  * Across a server restart the connection reconnects (nats-core's defaults: 10 attempts, 2 s
@@ -189,12 +190,22 @@ export function natsSequence<T = unknown>(options: NatsSequenceOptions): NatsSeq
     if (closed) throw new Error("the NATS sequence is closed");
     if (signal?.aborted) return;
     const nc = await connection();
+    const js = jetstream(nc);
+    if (start !== undefined) {
+      // A cursor past the stream's last sequence is one the adapter never wrote. One at or below
+      // it is accepted, whether or not the stream still keeps its message: the server starts the
+      // consumer at the oldest kept. Only a read with a cursor pays for the stream info request.
+      const { state } = await (await js.jetstreamManager(false)).streams.info(stream);
+      if (start > state.last_seq) {
+        throw new Error(`the NATS sequence gave out no cursor ${JSON.stringify(after)}`);
+      }
+    }
     const consumerOptions: Partial<OrderedConsumerOptions> =
       start === undefined
         ? { deliver_policy: DeliverPolicy.All }
         : { deliver_policy: DeliverPolicy.StartSequence, opt_start_seq: start + 1 };
     if (types.length > 0) consumerOptions.filter_subjects = [...types];
-    const consumer = await jetstream(nc).consumers.get(stream, consumerOptions);
+    const consumer = await js.consumers.get(stream, consumerOptions);
     const messages = await consumer.consume();
     const state: { failure?: Error } = {};
     reads.set(messages, state);

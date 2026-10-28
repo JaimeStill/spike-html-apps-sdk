@@ -198,5 +198,31 @@ export function sequenceContract(name, factory) {
       using([cloudEvent(1)], {}, async ({ sequence }) => {
         await assert.rejects(take(sequence.read({ after: "not a cursor" }), 1), Error);
       }));
+
+    test("a cursor past the last event fails the read, and one at it waits for the next", async () => {
+      // A cursor well-formed for the sequence, from another holding more events: the third event's,
+      // which a sequence of one never gave out.
+      let past;
+      await using(
+        [1, 2, 3].map((n) => cloudEvent(n)),
+        {},
+        async ({ sequence }) => {
+          past = (await take(sequence.read(), 3))[2].cursor;
+        },
+      );
+      await using([cloudEvent(1)], {}, async ({ sequence, append }) => {
+        await assert.rejects(take(sequence.read({ after: past }), 1), Error);
+        const [{ cursor: last }] = await take(sequence.read(), 1);
+        const deliveries = sequence.read({ after: last })[Symbol.asyncIterator]();
+        try {
+          const next = deliveries.next();
+          await delay(settle);
+          await append(cloudEvent(2));
+          assert.deepEqual((await next).value.event, cloudEvent(2));
+        } finally {
+          await deliveries.return?.();
+        }
+      });
+    });
   });
 }

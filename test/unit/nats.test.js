@@ -8,6 +8,7 @@ import { execFileSync } from "node:child_process";
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { after, before, describe, test } from "node:test";
 
 import { headers, wsconnect } from "@nats-io/nats-core";
@@ -184,6 +185,28 @@ describe("the NATS sequence's connection", { timeout: 15000 }, () => {
         });
       }
     }));
+
+  test("a cursor past the stream's last sequence fails the read; one at it waits", () =>
+    using(
+      [1, 2, 3].map((n) => cloudEvent(n)),
+      {},
+      async ({ sequence, append }) => {
+        for (const after of ["4", "1000"]) {
+          await assert.rejects(take(sequence.read({ after }), 1), {
+            message: `the NATS sequence gave out no cursor ${JSON.stringify(after)}`,
+          });
+        }
+        const deliveries = sequence.read({ after: "3" })[Symbol.asyncIterator]();
+        try {
+          const next = deliveries.next();
+          await delay(50);
+          await append(cloudEvent(4));
+          assert.deepEqual((await next).value, { event: cloudEvent(4), cursor: "4" });
+        } finally {
+          await deliveries.return();
+        }
+      },
+    ));
 
   test("a cursor is the event's stream sequence, as a decimal string", () =>
     using(
