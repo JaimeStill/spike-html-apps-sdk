@@ -10,8 +10,8 @@ All notable changes to `@jaimestill/spike-html-apps-sdk` are documented here. Th
 
 ### Added
 
-- The runtime: the declarations are now TypeScript modules, built to ES modules with their
-  declarations, with no runtime dependency.
+- The runtime: TypeScript modules, built to ES modules and their declarations, with no runtime
+  dependency.
 - `./api.js`: `createClient`'s runtime on fetch, every call resolving to a `Result`, with a
   bearer token from the `TokenProvider` and one shared refresh on a 401; `stream`, a
   text/event-stream response's events as `ServerSentEvent`s, and `StreamError`; and `upload`, a
@@ -33,14 +33,14 @@ All notable changes to `@jaimestill/spike-html-apps-sdk` are documented here. Th
 - Breaking: the router's base, without the `base` option, is the document's `<base href>` before
   it falls back to `/`.
 - Breaking: `Client` gains the required members `stream` and `upload`, so code that implements
-  `Client`, an app's fake among it, must add them.
+  `Client`, such as an app's test fake, must add them.
 - `Problem` keeps every extension member the problem document carries.
-- `ClientProblemType` gains `urn:standards-lab:problem:decode`, the problem of a 2xx body that
-  doesn't decode as its content type claims, or of a stream's 2xx response that isn't
-  text/event-stream, which carries the response's status; and `urn:standards-lab:problem:encode`,
-  the problem of a request body JSON.stringify throws on or gives nothing for, status 0 and nothing
-  sent, which was the network problem before.
-- A call's `RequestOptions` gain `query`, its query parameters, and `headers`, added to its
+- `ClientProblemType` gains `urn:standards-lab:problem:decode` and
+  `urn:standards-lab:problem:encode`. The decode problem is for a 2xx body that doesn't decode as
+  its content type claims, or a stream's 2xx response that isn't text/event-stream, and carries
+  the response's status. The encode problem is for a request body that JSON.stringify throws on or
+  gives nothing for; it has status 0, and nothing is sent.
+- `RequestOptions` gains `query`, the call's query parameters, and `headers`, added to its
   request.
 - `exports` lists the six public subpaths by name, each with a `types` and a `default` condition,
   in place of the `./*.js` pattern; the internal event-stream parser isn't exported.

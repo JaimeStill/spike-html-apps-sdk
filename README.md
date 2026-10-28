@@ -22,9 +22,9 @@ project itself declares. Each GitHub release also carries the tarball.
 
 ## Use
 
-The package is `@jaimestill/spike-html-apps-sdk`. Each subpath is a `.js` name with a `types` and a
-`default` condition, and the six below are all it exports; a module it uses internally, such as
-its event-stream parser, isn't importable:
+The package is `@jaimestill/spike-html-apps-sdk`. It exports the six subpaths below, each a `.js`
+name with a `types` and a `default` condition; its internal modules, such as the event-stream
+parser, aren't importable:
 
 ```ts
 import { createClient } from "@jaimestill/spike-html-apps-sdk/api.js";
@@ -35,15 +35,15 @@ import type { Service } from "@jaimestill/spike-html-apps-sdk/service.js";
 - `./api.js`: the API client, `createClient` and `Client`. Its calls (`get`, `post`, `put`,
   `patch`, `delete`) take a request's `query`, `headers`, and `signal`, and resolve to a `Result`
   and never reject: the decoded data, or an RFC 9457 `Problem` with every extension member the
-  server sent, or one the client made itself (`ClientProblemType`: network, abort, timeout, and
-  decode). `stream` reads a text/event-stream response's `ServerSentEvent`s; `upload` sends a body
-  reporting its progress. A `TokenProvider` puts a bearer token on each request and is asked once
-  to refresh on a 401. `Page` is a page of a list.
+  server sent, or one the client made itself (`ClientProblemType`: network, abort, timeout,
+  decode, and encode). `stream` reads a text/event-stream response's `ServerSentEvent`s; `upload`
+  sends a body over XMLHttpRequest and reports its progress. A `TokenProvider` puts a bearer token
+  on each request and is asked once to refresh on a 401. `Page` is a page of a list.
 - `./auth.js`: the `TokenProvider` hook and the `anonymous` default, which sends no token.
 - `./router.js`: the router, `createRouter` and `Router`, with `Routes`, `Loader`, and `Match`. It
-  mounts each route's element in its outlet, loading its module on the first visit, and an error
-  route's element when a route fails; it dispatches `change`, and `start()` and `query()` return
-  promises. Its base is the `base` option, else the document's `<base href>`, else `/`.
+  mounts each route's element in its outlet, loading its module on the first visit, and the
+  `error` option's element when a route fails; it dispatches `change`, and `start()` and `query()`
+  return promises. Its base is the `base` option, else the document's `<base href>`, else `/`.
 - `./service.js`: the domain-service pattern, `Service`, `Endpoint`, and `ServiceFactory`, as
   types: an app's domains tier writes each service as a stateless object over a `Client`, checked
   with `satisfies Service`.
@@ -55,8 +55,8 @@ import type { Service } from "@jaimestill/spike-html-apps-sdk/service.js";
 `./events/nats.js` imports `@nats-io/nats-core` and `@nats-io/jetstream` (`^3.4.0`), the package's
 optional peer dependencies: install them only to use that subpath. No other subpath imports them.
 
-The runtime targets the browser. The router needs the Navigation API and `URLPattern`, and
-`upload` needs `XMLHttpRequest`, which it resolves to a network problem without.
+The runtime targets the browser. The router needs the Navigation API and `URLPattern`. `upload`
+needs `XMLHttpRequest`; where there is none, as on Node, it resolves to the network problem.
 
 ## Development
 
@@ -70,9 +70,10 @@ mise run currency   # report every tool, package, and action pin behind its late
 ```
 
 The check runs two test tiers on the build. The unit tier runs under `node --test`: the client
-against a loopback server, the lint, a pack of the build, and the NATS adapter against the
-pinned `nats-server`, started per suite. The browser tier runs the router and the upload in the
-pinned `chrome-headless-shell`. `mise run install` installs both pins.
+against a loopback server, the event-stream parser, the emitted declarations against v0.1.0's,
+the layer's import rules, a pack of the build, the event-sequence contract, and the NATS adapter
+against the pinned `nats-server`, which the tier starts itself. The browser tier runs the router
+and the upload in the pinned `chrome-headless-shell`. `mise run install` installs both pins.
 
 A push to main whose `package.json` version has no tag yet releases it: the check, then the pack
 committed and tagged, and a GitHub release from `CHANGELOG.md`.
