@@ -46,9 +46,15 @@ function resolveSubpaths(root, name, subpaths) {
   return resolved;
 }
 
-/** The dist/ paths a source in src/ ships as: a declaration as itself, and nothing else ships. */
+/** The dist/ paths a source in src/ ships as: a module as its emitted .js and .d.ts, and a
+ * handwritten declaration as itself. */
 export function builtFrom(source) {
-  return source.endsWith(".d.ts") ? [`dist/${source}`] : [];
+  if (source.endsWith(".d.ts")) return [`dist/${source}`];
+  if (source.endsWith(".ts")) {
+    const base = source.slice(0, -".ts".length);
+    return [`dist/${base}.js`, `dist/${base}.d.ts`];
+  }
+  return [];
 }
 
 /** The files every pack carries whatever package.json's files lists. */
@@ -96,7 +102,7 @@ export function releaseProblems(root, src) {
   const expected = new Set();
   for (const source of listFiles(src)) {
     const outputs = builtFrom(source);
-    if (outputs.length === 0) problems.push(`src/${source} isn't a .d.ts source`);
+    if (outputs.length === 0) problems.push(`src/${source} isn't a .ts or .d.ts source`);
     for (const output of outputs) {
       expected.add(output);
       if (!builtSet.has(output)) problems.push(`src/${source} has no built ${output}`);

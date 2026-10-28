@@ -1,6 +1,6 @@
 // The layer's import cases as one file tree in the repository's shape: a file per forbidden import
 // and form, each with the rules that catch it, and the imports the layer may make in the same
-// layout. Every file is a declaration, as every source is. layers.test.js lints it.
+// layout. layers.test.js lints it.
 // Adapted from spike-html-packages-sdk (9d10ca6): test/unit/layers-tree.js, renamed.
 
 import { spawnSync } from "node:child_process";
@@ -29,10 +29,10 @@ export const watched = [table, extraneous, relativePackages, "import-x/no-unreso
  * form: a side-effect import, a type import, a re-export, and an import(). */
 function forms(base, specifier) {
   return {
-    [`${base}.d.ts`]: `import "${specifier}";`,
-    [`${base}-type.d.ts`]: `import type { X } from "${specifier}";`,
-    [`${base}-export.d.ts`]: `export * from "${specifier}";`,
-    [`${base}-dynamic.d.ts`]: `await import("${specifier}");`,
+    [`${base}.ts`]: `import "${specifier}";`,
+    [`${base}-type.ts`]: `import type { X } from "${specifier}";`,
+    [`${base}-export.ts`]: `export * from "${specifier}";`,
+    [`${base}-dynamic.ts`]: `await import("${specifier}");`,
   };
 }
 
@@ -48,28 +48,28 @@ export const violations = {
   // Any package by name: the manifest declares no dependency, and the table allows no package. A
   // devDependency ships nothing, and the package's own name resolves to its build, not its src/.
   ...by([table, extraneous], {
-    "src/lit.d.ts": `import type { TemplateResult } from "lit";`,
+    "src/lit.ts": `import { html } from "lit";`,
     ...forms("src/forms/lit", "lit"),
     ...forms("src/forms/foundation", `${siblings[0]}/dom.js`),
     ...forms("src/forms/components", `${siblings[1]}/status-badge.js`),
-    "src/app.d.ts": `import type { Client } from "${app}/main.js";`,
+    "src/app.ts": `import { define } from "${app}/main.js";`,
     ...forms("src/forms/typescript", "typescript"),
-    ...forms("src/forms/self-name", `${sdk}/api.js`),
+    ...forms("src/forms/self-name", `${sdk}/auth.js`),
   }),
   // A package by a relative path into node_modules/.
   ...by([table, relativePackages], {
-    "src/lit-path.d.ts": `import type { X } from "../node_modules/lit/index.js";`,
+    "src/lit-path.ts": `import "../node_modules/lit/index.js";`,
   }),
   // A value import of a declaration file, in each value form, an inline `type` specifier among
   // them, since verbatimModuleSyntax keeps that import.
   ...by([table], {
-    "src/api-value.d.ts": `import { createClient } from "./api.js";`,
-    "src/api-side-effect.d.ts": `import "./api.js";`,
-    "src/api-inline-type.d.ts": `import { type Client } from "./api.js";`,
-    "src/api-export.d.ts": `export { createClient } from "./api.js";`,
-    "src/api-export-all.d.ts": `export * from "./api.js";`,
-    "src/api-dynamic.d.ts": `await import("./api.js");`,
-    "src/nested/api-value.d.ts": `import { createClient } from "../api.js";`,
+    "src/declared-value.ts": `import { createClient } from "./declared.js";`,
+    "src/declared-side-effect.ts": `import "./declared.js";`,
+    "src/declared-inline-type.ts": `import { type Client } from "./declared.js";`,
+    "src/declared-export.ts": `export { createClient } from "./declared.js";`,
+    "src/declared-export-all.ts": `export * from "./declared.js";`,
+    "src/declared-dynamic.ts": `await import("./declared.js");`,
+    "src/nested/declared-value.ts": `import { createClient } from "../declared.js";`,
   }),
 };
 
@@ -77,29 +77,33 @@ export const violations = {
 export const sources = (cases) =>
   Object.fromEntries(Object.entries(cases).map(([path, { source }]) => [path, source]));
 
-// Every import the layer may make, a type import or a type export in each place, with names that
-// hold dots, which a rule must tell from . and .. segments.
+// Every import the layer may make, in each form, with names that hold dots, which a rule must tell
+// from . and .. segments.
 export const allowed = {
-  "src/service.d.ts": `import type { Client } from "./api.js";\nexport type { Result } from "./api.js";`,
-  "src/api-typeof.d.ts": `import type { createClient } from "./api.js";\nexport type F = typeof createClient;`,
-  "src/api-export-all-type.d.ts": `export type * from "./api.js";`,
-  "src/nested/own.d.ts": `import type { Client } from "../api.js";`,
-  "src/nested/index.d.ts": `import type { X } from "..";\nexport type * from "./";`,
-  "src/dotted.d.ts": `import type { Y } from "./..x/y.js";\nimport type { A } from "./.well-known/a.js";`,
+  "src/api.ts": `export { anonymous } from "./auth.ts";`,
+  "src/nested/own.ts": `import type { X } from "../api.ts";\nawait import("../api.ts");`,
+  "src/nested/index.ts": `import "..";\nexport * from "./";`,
+  "src/dotted.ts": `import "./..x/y.ts";\nimport "./.well-known/a.ts";`,
+  "src/declared-type.ts": `import type { Client } from "./declared.js";`,
+  "src/declared-export-type.ts": `export type { Result } from "./declared.js";`,
+  "src/declared-typeof.ts": `import type { createClient } from "./declared.js";\nexport type F = typeof createClient;`,
+  "src/declared-export-all-type.ts": `export type * from "./declared.js";`,
 };
 
-/** The files the cases import that no case is: the declarations and the package's build, which
- * its own name resolves to. */
+/** The files the cases import that no case is: the modules, the declaration, and the package's
+ * build, which its own name resolves to. */
 const targets = {
-  "src/api.d.ts": [
+  "src/auth.ts": "export const anonymous = {};",
+  "src/index.ts": "export {};",
+  "src/..x/y.ts": "export {};",
+  "src/.well-known/a.ts": "export {};",
+  "src/declared.d.ts": [
     "export interface Client {}",
     "export type Result<T> = { ok: true; data: T } | { ok: false };",
     "export declare function createClient(): Client;",
   ].join("\n"),
-  "src/index.d.ts": "export interface X {}",
-  "src/..x/y.d.ts": "export interface Y {}",
-  "src/.well-known/a.d.ts": "export interface A {}",
-  "dist/api.d.ts": "export interface X {}",
+  "dist/auth.js": "export {};",
+  "dist/auth.d.ts": "export interface X {}",
 };
 
 /** The packages the cases name, as stubs in node_modules/: lit, the siblings, the app,
@@ -114,11 +118,11 @@ const stub = (name) => ({
       "./*": { types: "./index.d.ts", default: "./index.js" },
     },
   }),
-  "index.js": "export {};",
+  "index.js": "export const html = () => {};\nexport const define = () => {};",
   "index.d.ts": [
+    "export declare const html: () => void;",
+    "export declare const define: () => void;",
     "export interface X {}",
-    "export interface Client {}",
-    "export interface TemplateResult {}",
   ].join("\n"),
 });
 

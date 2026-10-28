@@ -1,6 +1,6 @@
-// The types check, mise run types: tsc reads the declarations in src/ and emits nothing, since a
-// declaration file has nothing to emit; mise run build copies them into dist/ as written.
-// From spike-html-packages-sdk (9d10ca6): tsconfig.json.
+// The build, src/ into dist/: tsc emits each module's .js and .d.ts. mise run types checks the same
+// sources with --noEmit.
+// Adapted from spike-html-packages-sdk (9d10ca6): tsconfig.json.
 {
   "compilerOptions": {
     "target": "es2024",
@@ -9,8 +9,13 @@
     "moduleResolution": "bundler",
     "types": [],
     "strict": true,
+    "erasableSyntaxOnly": true,
     "verbatimModuleSyntax": true,
-    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
+    "declaration": true,
+    "rootDir": "src",
+    "outDir": "dist",
     "skipLibCheck": false
   },
   "include": ["src"]

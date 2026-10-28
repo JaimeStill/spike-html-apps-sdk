@@ -59,13 +59,17 @@ describe("release pack", () => {
   });
 
   const faults = {
-    "a .d.ts source with no copy": [
-      remove("dist/auth.d.ts"),
-      "src/auth.d.ts has no built dist/auth.d.ts",
+    "a .ts module with no emitted .js": [
+      remove("dist/auth.js"),
+      "src/auth.ts has no built dist/auth.js",
     ],
-    "a runtime module in the build": [
-      (dir) => writeFileSync(join(dir, "dist/api.js"), ""),
-      "dist/api.js is built from no source",
+    "a .ts module with no emitted .d.ts": [
+      remove("dist/service.d.ts"),
+      "src/service.ts has no built dist/service.d.ts",
+    ],
+    "a stray built file": [
+      (dir) => writeFileSync(join(dir, "dist/old.js"), ""),
+      "dist/old.js is built from no source",
     ],
     "a stray file in the pack": [
       (dir) => writeFileSync(join(dir, "notes.md"), ""),
@@ -73,23 +77,28 @@ describe("release pack", () => {
     ],
     "a pack without its README": [remove("README.md"), "the pack has no README.md"],
     "an export at a missing file": [
-      (_, copy) => (copy.exports["./gone.js"] = { types: "./dist/gone.d.ts" }),
-      'exports["./gone.js"] resolves to ./dist/gone.d.ts, which isn\'t built',
+      (_, copy) =>
+        (copy.exports["./gone.js"] = { types: "./dist/gone.d.ts", default: "./dist/gone.js" }),
+      'exports["./gone.js"] resolves to ./dist/gone.js, which isn\'t built',
     ],
     "a types target outside dist/": [
-      (_, copy) => (copy.exports["./api.js"] = { types: "./src/api.d.ts" }),
-      'exports["./api.js"] resolves to ./src/api.d.ts, which isn\'t built',
+      (_, copy) => (copy.exports["./api.js"] = { types: "./src/api.ts", default: "./dist/api.js" }),
+      'exports["./api.js"] resolves to ./src/api.ts, which isn\'t built',
     ],
-    "a declaration exported as a runtime module": [
-      (_, copy) => (copy.exports["./*.js"] = { types: "./dist/*.d.ts", default: "./dist/*.js" }),
-      'exports["./router.js"] resolves to ./dist/router.js, which isn\'t built',
+    "a pattern export whose other condition is missing": [
+      (_, copy) => (copy.exports["./*.js"] = { types: "./dist/*.ts", default: "./dist/*.js" }),
+      'exports["./router.js"] resolves to ./dist/router.ts, which isn\'t built',
     ],
     "a built file no export reaches": [
-      (_, copy) => delete copy.exports["./*.js"],
-      "dist/service.d.ts is reachable through no export",
+      (_, copy) => (copy.exports["./*.js"] = { types: "./dist/*.d.ts" }),
+      "dist/auth.js is reachable through no export",
     ],
     "a pattern export that reaches nothing": [
-      (_, copy) => (copy.exports["./apps/*.js"] = { types: "./dist/apps/*.d.ts" }),
+      (_, copy) =>
+        (copy.exports["./apps/*.js"] = {
+          types: "./dist/apps/*.d.ts",
+          default: "./dist/apps/*.js",
+        }),
       'exports["./apps/*.js"] reaches no built file',
     ],
     "a pack without its LICENSE": [remove("LICENSE"), "LICENSE is missing"],
@@ -102,8 +111,8 @@ describe("release pack", () => {
       "package.json declares license MIT, not Apache-2.0",
     ],
     "a build outside files": [
-      (_, copy) => (copy.files = ["dist/api.d.ts"]),
-      "dist/router.d.ts isn't under package.json's files",
+      (_, copy) => (copy.files = ["dist/api.js"]),
+      "dist/router.js isn't under package.json's files",
     ],
   };
   for (const [fault, [change, problem]] of Object.entries(faults)) {

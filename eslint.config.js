@@ -11,7 +11,7 @@ import tseslint from "typescript-eslint";
 
 const code = ["**/*.js", "**/*.ts"];
 
-// The layer table cut to the SDK: its declarations, which may import nothing but themselves.
+// The layer table cut to the SDK: its sources, which may import nothing but themselves.
 export const layers = [{ name: "sdk", path: "src", may: ["sdk"] }];
 
 // The layer is an element by its directory, matched from the root (partialMatch false), with a
@@ -30,7 +30,7 @@ const policies = layers.map(({ name, may }) => ({
   allow: { to: may.map((target) => ({ element: { type: target } })) },
 }));
 
-// Every source is a declaration file, with no runtime, so an import that resolves to one passes
+// A declaration file (a handwritten .d.ts) has no runtime, so an import that resolves to one passes
 // only as a type import, `import type` or `export type`, which tsc erases: the last policy refuses
 // any other kind, and as the last whose selector matches it overrides the allow before it. The
 // dependency's kind is the declaration's, so `import { type X }` is a value import here, as it is
