@@ -289,6 +289,10 @@ export interface UploadOptions extends RequestOptions {
     reason: "the event-stream parser, internal: the client's stream reads a response through it",
   },
   {
+    file: "events.d.ts",
+    reason: "the event-sequence interface: a CloudEvent, its opaque cursor, and the sequence read",
+  },
+  {
     file: "router.d.ts",
     from: `/** How a router is made: the element it mounts each route's element into, the base path the app
  * is served under ("/" by default), which every pattern and navigate() path is relative to, and
