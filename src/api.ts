@@ -1,12 +1,14 @@
 // The application SDK's API client, on fetch and AbortSignal: the problem, the result, the page,
-// the client's options and shape, and createClient. Every call resolves to a Result and never
-// rejects.
+// the server-sent event, the client's options and shape, and createClient. Every call resolves to a
+// Result and never rejects; a stream's events, read after it resolves, are the one place an error
+// is thrown.
 // Adapted from spike-html-packages-sdk (9d10ca6): src/api.d.ts, its declarations made a module.
 // test/fixtures/v0.1.0/api.d.ts is that file, which the emitted declaration matches but for the
 // differences test/unit/declarations.test.js expects.
 
 import type { TokenProvider } from "./auth.ts";
 import { anonymous } from "./auth.ts";
+import { EventStreamParser } from "./eventstream.ts";
 
 /** An RFC 9457 problem document, as go-web-sdk's Problem writes it, with `title` always present:
  * go-web-sdk's Write defaults it to the status phrase, but omits it for a status outside net/http's
@@ -31,15 +33,38 @@ export interface Problem {
 /** The type of a problem the client makes itself, each with a fixed title. With no response behind
  * it, status 0: the network failed (fetch rejected; "Network error"), the caller's signal aborted
  * the call ("Request aborted"), or the signal's timeout (AbortSignal.timeout) fired ("Request timed
- * out"). With the response's status: a 2xx body didn't decode as its content type claims
- * ("Response not decodable"). A failing response that isn't a problem document becomes an
- * "about:blank" problem titled with the response's status text, or "HTTP <status>" when it has
- * none, as does a problem document with no title. */
+ * out"). With the response's status: a 2xx body didn't decode as its content type claims, or a
+ * stream's 2xx response isn't text/event-stream ("Response not decodable"). A failing response
+ * that isn't a problem document becomes an "about:blank" problem titled with the response's status
+ * text, or "HTTP <status>" when it has none, as does a problem document with no title. */
 export type ClientProblemType =
   | "urn:standards-lab:problem:network"
   | "urn:standards-lab:problem:abort"
   | "urn:standards-lab:problem:timeout"
   | "urn:standards-lab:problem:decode";
+
+/** One event of a text/event-stream response, as the WHATWG HTML standard parses it: its type,
+ * "message" when the stream names none; its data, its data lines joined with "\n"; and the last
+ * event id the stream set, when one is set, carried from an earlier event as an EventSource's
+ * lastEventId is. A `retry` field is parsed and dropped: the client makes no reconnection. */
+export interface ServerSentEvent {
+  type: string;
+  data: string;
+  id?: string;
+}
+
+/** The error a stream's events throw when the network fails after the stream resolved, its
+ * `problem` the network problem a call would have resolved to. It is the one error the client
+ * throws; the caller's signal ends the events quietly instead. */
+export class StreamError extends Error {
+  readonly problem: Problem;
+
+  constructor(problem: Problem) {
+    super(problem.detail === undefined ? problem.title : `${problem.title}: ${problem.detail}`);
+    this.name = "StreamError";
+    this.problem = problem;
+  }
+}
 
 /** A call's outcome: the decoded body, or the problem that stopped it. A body decodes by its content
  * type: JSON (application/json or any +json type) parsed, text/* a string, any other a Blob, and no
@@ -62,7 +87,7 @@ export interface Page<T> {
 /** A call's options: the signal that aborts it, the query parameters set on its URL, and the
  * headers added to its request. A query value is set as its string; an array sets its name once per
  * element, in order; an undefined value is left out. The client sets Authorization itself, over any
- * header of that name here, and Content-Type when it sends the body as JSON. */
+ * header of that name here, Content-Type when it sends the body as JSON, and Accept on a stream. */
 export interface RequestOptions {
   signal?: AbortSignal;
   query?: Readonly<
@@ -86,13 +111,24 @@ export interface ClientOptions {
  * it asks the provider to refresh and retries once with the refreshed token, or returns the 401's
  * problem when the refresh gives none; 401s that arrive while a refresh is pending share that one
  * refresh. A FormData, Blob, ArrayBuffer or view, or URLSearchParams body is sent as it is; any
- * other body is sent as JSON. */
+ * other body is sent as JSON.
+ *
+ * `stream` sends a POST with the body when it is given one and a GET when it isn't, with
+ * `Accept: text/event-stream`, and resolves when the response's headers arrive, before its first
+ * event: to the problem, as any call's, or to the events, read as they arrive. A 2xx response that
+ * isn't text/event-stream is the decode problem. The caller's signal ends the events quietly; the
+ * network failing throws a StreamError; and leaving the loop early cancels the response. */
 export interface Client {
   get<T>(path: string, options?: RequestOptions): Promise<Result<T>>;
   post<T>(path: string, body?: unknown, options?: RequestOptions): Promise<Result<T>>;
   put<T>(path: string, body?: unknown, options?: RequestOptions): Promise<Result<T>>;
   patch<T>(path: string, body?: unknown, options?: RequestOptions): Promise<Result<T>>;
   delete<T>(path: string, options?: RequestOptions): Promise<Result<T>>;
+  stream(
+    path: string,
+    body?: unknown,
+    options?: RequestOptions,
+  ): Promise<Result<AsyncIterable<ServerSentEvent>>>;
 }
 
 /** Makes a client. */
@@ -109,33 +145,73 @@ export function createClient(options: ClientOptions = {}): Client {
     return refreshing;
   }
 
+  /** The response to the request, its token carried and a 401 refreshed and retried once; it
+   * rejects as fetch does. `accept`, when given, is the Accept header, over any of the caller's. */
+  async function respond(
+    method: string,
+    path: string,
+    body: unknown,
+    request: RequestOptions,
+    accept?: string,
+  ): Promise<Response> {
+    const url = join(base, path, request.query);
+    const headers = new Headers(request.headers);
+    if (accept !== undefined) headers.set("Accept", accept);
+    const payload = encode(body, headers);
+    const send = (token: string | undefined) => {
+      if (token === undefined) headers.delete("Authorization");
+      else headers.set("Authorization", `Bearer ${token}`);
+      return fetch(url, { method, headers, body: payload, signal: request.signal });
+    };
+    let response = await send(await settle(auth.token()));
+    if (response.status === 401) {
+      const token = await refresh();
+      if (token !== undefined) {
+        await response.body?.cancel();
+        response = await send(token);
+      }
+    }
+    return response;
+  }
+
   async function call<T>(
     method: string,
     path: string,
     body: unknown,
     request: RequestOptions = {},
   ): Promise<Result<T>> {
-    const { signal } = request;
     try {
-      const url = join(base, path, request.query);
-      const headers = new Headers(request.headers);
-      const payload = encode(body, headers);
-      const send = (token: string | undefined) => {
-        if (token === undefined) headers.delete("Authorization");
-        else headers.set("Authorization", `Bearer ${token}`);
-        return fetch(url, { method, headers, body: payload, signal });
-      };
-      let response = await send(await settle(auth.token()));
-      if (response.status === 401) {
-        const token = await refresh();
-        if (token !== undefined) {
-          await response.body?.cancel();
-          response = await send(token);
-        }
-      }
-      return await decode<T>(response);
+      return await decode<T>(await respond(method, path, body, request));
     } catch (error) {
-      return { ok: false, problem: failure(error, signal) };
+      return { ok: false, problem: failure(error, request.signal) };
+    }
+  }
+
+  async function stream(
+    path: string,
+    body: unknown,
+    request: RequestOptions = {},
+  ): Promise<Result<AsyncIterable<ServerSentEvent>>> {
+    const method = body === undefined ? "GET" : "POST";
+    try {
+      const response = await respond(method, path, body, request, "text/event-stream");
+      if (!response.ok) return { ok: false, problem: await problem(response) };
+      const type = mediaType(response);
+      if (type !== "text/event-stream" || response.body === null) {
+        await response.body?.cancel();
+        return {
+          ok: false,
+          problem: {
+            type: "urn:standards-lab:problem:decode",
+            status: response.status,
+            title: "Response not decodable",
+            detail: `${type || "no content type"} is not text/event-stream`,
+          },
+        };
+      }
+      return { ok: true, data: events(response.body, request.signal) };
+    } catch (error) {
+      return { ok: false, problem: failure(error, request.signal) };
     }
   }
 
@@ -145,7 +221,37 @@ export function createClient(options: ClientOptions = {}): Client {
     put: (path, body, options) => call("PUT", path, body, options),
     patch: (path, body, options) => call("PATCH", path, body, options),
     delete: (path, options) => call("DELETE", path, undefined, options),
+    stream: (path, body, options) => stream(path, body, options),
   };
+}
+
+/** The events of a text/event-stream body, parsed as its chunks arrive. A read that fails ends
+ * the events quietly when `signal` aborted it, and throws a StreamError with the network problem
+ * otherwise. However the loop ends, a break or a throw in it included, the body is cancelled. */
+async function* events(
+  body: ReadableStream<Uint8Array>,
+  signal: AbortSignal | undefined,
+): AsyncGenerator<ServerSentEvent, void, undefined> {
+  const reader = body.getReader();
+  const parser = new EventStreamParser();
+  try {
+    for (;;) {
+      let chunk: ReadableStreamReadResult<Uint8Array>;
+      try {
+        chunk = await reader.read();
+      } catch (error) {
+        if (signal?.aborted) return;
+        throw new StreamError(failure(error, undefined));
+      }
+      if (chunk.done) break;
+      yield* parser.push(chunk.value);
+    }
+    yield* parser.end();
+  } finally {
+    // A body read to its end, or one that failed, has nothing left to cancel, and its cancel
+    // settles at once; a cancel that rejects has no caller to tell.
+    await reader.cancel().catch(() => {});
+  }
 }
 
 /** A provider's token, or undefined when the provider rejects, which the client treats as having

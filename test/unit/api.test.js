@@ -1,6 +1,6 @@
 // The API client as a consumer imports it, the package's ./api.js export over the dist/ mise run
-// build wrote, against a loopback node:http server each suite starts; and the sample documents
-// service over it, at runtime and under tsc.
+// build wrote, against a loopback node:http server each suite starts, its event streams written in
+// chunks with delays between; and the sample documents service over it, at runtime and under tsc.
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, describe, test } from "node:test";
 
-import { createClient } from "@jaimestill/spike-html-apps-sdk/api.js";
+import { createClient, StreamError } from "@jaimestill/spike-html-apps-sdk/api.js";
 import { documents } from "./documents.ts";
 
 const root = join(import.meta.dirname, "../..");
@@ -25,6 +25,47 @@ function send(res, status, type, body, message) {
   res.end(bytes);
 }
 
+/** Starts a text/event-stream response, its headers sent at once so the client's stream resolves
+ * before the first event; the response's close counted in `state.closed`. */
+function startEvents(res, state) {
+  res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" });
+  res.flushHeaders();
+  res.on("close", () => state.closed++);
+}
+
+/** Writes `chunks` to a started event stream, `delay` ms apart, then ends it. */
+function writeEvents(res, chunks, delay = 10) {
+  let at = 0;
+  const next = () => {
+    if (res.destroyed) return;
+    if (at === chunks.length) return res.end();
+    res.write(chunks[at++]);
+    setTimeout(next, delay);
+  };
+  next();
+}
+
+/** The request's body, read whole, as text. */
+async function text(req) {
+  const chunks = [];
+  for await (const chunk of req) chunks.push(chunk);
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+/** An event stream's chunks: a "request" event echoing the method, Accept, and body, then three
+ * "tick" events, split mid-line, mid-field, and inside a CRLF. */
+function ticks(req, body) {
+  const request = JSON.stringify({ method: req.method, accept: req.headers.accept, body });
+  return [
+    `event: request\ndata: ${request}\n\n`,
+    "event: tick\nid: 1\nda",
+    "ta: one\n\nevent: tick\r",
+    "\ndata: two\r\n\r",
+    "\nevent: tick\nid: 3\r\ndata: three\r\n\r",
+    "\n",
+  ];
+}
+
 const docs = [
   { id: 1, title: "one" },
   { id: 2, title: "two" },
@@ -36,6 +77,18 @@ const docs = [
 function handle(req, res, state) {
   const url = new URL(req.url, "http://loopback");
   const path = url.pathname.replace(/^\/api/, "");
+  const chat = /^\/documents\/(\d+)\/chat$/.exec(path);
+  if (chat) {
+    text(req).then((body) => {
+      const { prompt } = JSON.parse(body);
+      startEvents(res, state);
+      writeEvents(res, [
+        `event: answer\ndata: document ${chat[1]}: ${prompt}\n\n`,
+        "event: done\ndata: {}\n\n",
+      ]);
+    });
+    return;
+  }
   const doc = /^\/documents\/(\d+)$/.exec(path);
   if (doc) {
     const found = docs.find(({ id }) => id === Number(doc[1]));
@@ -111,6 +164,42 @@ function handle(req, res, state) {
       });
       return;
     }
+    case "/events":
+      text(req).then((body) => {
+        startEvents(res, state);
+        writeEvents(res, ticks(req, body));
+      });
+      return;
+    case "/events/auth":
+      if (req.headers.authorization !== "Bearer fresh") {
+        return send(res, 401, "application/problem+json", {
+          type: "about:blank",
+          status: 401,
+          title: "Unauthorized",
+        });
+      }
+      startEvents(res, state);
+      return writeEvents(res, ["data: authorized\n\n"]);
+    case "/events/gate":
+      // The first event waits for the test to open state.gate.
+      startEvents(res, state);
+      state.gate.then(() => writeEvents(res, ["data: through\n\n"]));
+      return;
+    case "/events/endless": {
+      // A tick every 10 ms until the client goes.
+      startEvents(res, state);
+      let n = 0;
+      const timer = setInterval(() => res.write(`data: ${++n}\n\n`), 10);
+      res.on("close", () => clearInterval(timer));
+      return;
+    }
+    case "/events/drop":
+      // Two events, then the socket destroyed with the response unfinished.
+      startEvents(res, state);
+      res.write("data: 1\n\n");
+      setTimeout(() => res.write("data: 2\n\n"), 10);
+      setTimeout(() => req.socket.destroy(), 30);
+      return;
     default:
       return send(res, 404, "text/plain", "no route", "Not Found");
   }
@@ -118,7 +207,7 @@ function handle(req, res, state) {
 
 /** A loopback server over handle, listening; its origin and its per-server state. */
 async function serve() {
-  const state = { authHits: 0 };
+  const state = { authHits: 0, closed: 0, gate: Promise.resolve() };
   const server = createServer((req, res) => handle(req, res, state));
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
@@ -452,6 +541,169 @@ describe("the token", () => {
   });
 });
 
+/** Every event of a stream's Result, read to its end. */
+async function collect(result) {
+  assert.equal(result.ok, true, JSON.stringify(result.problem));
+  const events = [];
+  for await (const event of result.data) events.push(event);
+  return events;
+}
+
+/** Runs `fn` with a client over a server of its own, so no other test's response closes on it, and
+ * the server's state. */
+async function alone(fn) {
+  const own = await serve();
+  try {
+    await fn(createClient({ base: `${own.origin}/api` }), own.state);
+  } finally {
+    own.server.closeAllConnections();
+    own.server.close();
+  }
+}
+
+/** Resolves once the server has seen a response close; fails when it hasn't within a second. */
+async function closed(state) {
+  const deadline = Date.now() + 1000;
+  while (state.closed === 0) {
+    assert.ok(Date.now() < deadline, "the server never saw the response close");
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+}
+
+const ticked = [
+  { type: "tick", data: "one", id: "1" },
+  { type: "tick", data: "two", id: "1" },
+  { type: "tick", data: "three", id: "3" },
+];
+
+describe("the stream", () => {
+  test("with no body, a GET with Accept: text/event-stream, its events parsed as they arrive", async () => {
+    const [request, ...rest] = await collect(await client.stream("events"));
+    assert.equal(request.type, "request");
+    assert.deepEqual(JSON.parse(request.data), {
+      method: "GET",
+      accept: "text/event-stream",
+      body: "",
+    });
+    assert.deepEqual(rest, ticked);
+  });
+
+  test("with a body, a POST that sends it as JSON", async () => {
+    const options = { headers: { Accept: "application/json" } };
+    const [request, ...rest] = await collect(await client.stream("events", { q: 1 }, options));
+    assert.deepEqual(JSON.parse(request.data), {
+      method: "POST",
+      accept: "text/event-stream",
+      body: '{"q":1}',
+    });
+    assert.deepEqual(rest, ticked);
+  });
+
+  test("resolves when the headers arrive, before the first event", async () => {
+    await alone(async (own, state) => {
+      let open;
+      state.gate = new Promise((resolve) => (open = resolve));
+      const result = await own.stream("events/gate");
+      assert.equal(result.ok, true);
+      open();
+      assert.deepEqual(await collect(result), [{ type: "message", data: "through" }]);
+    });
+  });
+
+  test("a problem document before the stream is the Result's problem", async () => {
+    const result = await client.stream("documents/9");
+    assert.equal(result.ok, false);
+    assert.equal(result.problem.status, 404);
+    assert.equal(result.problem.detail, "no document");
+  });
+
+  test("a 2xx response that isn't text/event-stream is the decode problem", async () => {
+    const result = await client.stream("json");
+    assert.equal(result.ok, false);
+    assert.equal(result.problem.type, "urn:standards-lab:problem:decode");
+    assert.equal(result.problem.status, 200);
+  });
+
+  test("a rejected fetch is the network problem, as any call's", async () => {
+    const closed = await serve();
+    closed.server.close();
+    await once(closed.server, "close");
+    const result = await createClient({ base: closed.origin }).stream("events");
+    assert.equal(result.ok, false);
+    assert.equal(result.problem.type, "urn:standards-lab:problem:network");
+  });
+
+  test("a 401 refreshes and retries once, then streams", async () => {
+    const auth = provider("stale", "fresh");
+    const streaming = createClient({ base: `${loopback.origin}/api`, auth });
+    const events = await collect(await streaming.stream("events/auth"));
+    assert.deepEqual(events, [{ type: "message", data: "authorized" }]);
+    assert.equal(auth.refreshes, 1);
+  });
+
+  test("the caller's signal aborting mid-stream ends the events quietly", async () => {
+    await alone(async (own, state) => {
+      const controller = new AbortController();
+      const result = await own.stream("events/endless", undefined, { signal: controller.signal });
+      const events = [];
+      for await (const event of result.data) {
+        events.push(event);
+        if (events.length === 2) controller.abort();
+      }
+      assert.deepEqual(events.slice(0, 2), [
+        { type: "message", data: "1" },
+        { type: "message", data: "2" },
+      ]);
+      await closed(state);
+    });
+  });
+
+  test("an abort while no read is pending ends the events quietly too", async () => {
+    const controller = new AbortController();
+    const result = await client.stream("events/endless", undefined, { signal: controller.signal });
+    const iterator = result.data[Symbol.asyncIterator]();
+    assert.equal((await iterator.next()).value.data, "1");
+    controller.abort();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    // Ticks parsed already may still come; the abort ends the events after them, with no throw.
+    let next;
+    do next = await iterator.next();
+    while (!next.done);
+  });
+
+  test("the socket destroyed mid-stream throws a StreamError with the network problem", async () => {
+    const result = await client.stream("events/drop");
+    const events = [];
+    await assert.rejects(
+      async () => {
+        for await (const event of result.data) events.push(event.data);
+      },
+      (error) => {
+        assert.ok(error instanceof StreamError);
+        assert.ok(error instanceof Error);
+        assert.equal(error.name, "StreamError");
+        assert.equal(error.problem.type, "urn:standards-lab:problem:network");
+        assert.equal(error.problem.status, 0);
+        assert.equal(error.problem.title, "Network error");
+        return true;
+      },
+    );
+    assert.deepEqual(events, ["1", "2"]);
+  });
+
+  test("breaking out of the loop cancels the response", async () => {
+    await alone(async (own, state) => {
+      const result = await own.stream("events/endless");
+      for await (const event of result.data) {
+        assert.equal(event.data, "1");
+        break;
+      }
+      // The server sees the response close, which an endless stream does only when the client goes.
+      await closed(state);
+    });
+  });
+});
+
 describe("the sample documents service", () => {
   test("get resolves a document", async () => {
     assert.deepEqual(await documents(client).get(2), { ok: true, data: docs[1] });
@@ -462,6 +714,13 @@ describe("the sample documents service", () => {
     assert.equal(result.ok, false);
     assert.equal(result.problem.status, 404);
     assert.equal(result.problem.detail, "no document");
+  });
+
+  test("chat streams its answer", async () => {
+    assert.deepEqual(await collect(await documents(client).chat(2, "summarize")), [
+      { type: "answer", data: "document 2: summarize" },
+      { type: "done", data: "{}" },
+    ]);
   });
 
   test("list resolves a Page", async () => {

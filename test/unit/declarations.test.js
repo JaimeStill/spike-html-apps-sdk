@@ -179,6 +179,77 @@ const differences = [
     reason: "concurrent 401s share one refresh, and a body is sent as it is or as JSON by its kind",
   },
   {
+    file: "api.d.ts",
+    from: ` * out"). With the response's status: a 2xx body didn't decode as its content type claims
+ * ("Response not decodable"). A failing response that isn't a problem document becomes an
+ * "about:blank" problem titled with the response's status text, or "HTTP <status>" when it has
+ * none, as does a problem document with no title. */
+`,
+    to: ` * out"). With the response's status: a 2xx body didn't decode as its content type claims, or a
+ * stream's 2xx response isn't text/event-stream ("Response not decodable"). A failing response
+ * that isn't a problem document becomes an "about:blank" problem titled with the response's status
+ * text, or "HTTP <status>" when it has none, as does a problem document with no title. */
+`,
+    reason: "a stream's 2xx response that isn't text/event-stream is the client's decode problem",
+  },
+  {
+    file: "api.d.ts",
+    from: `/** A call's outcome: the decoded body`,
+    to: `/** One event of a text/event-stream response, as the WHATWG HTML standard parses it: its type,
+ * "message" when the stream names none; its data, its data lines joined with "\\n"; and the last
+ * event id the stream set, when one is set, carried from an earlier event as an EventSource's
+ * lastEventId is. A \`retry\` field is parsed and dropped: the client makes no reconnection. */
+export interface ServerSentEvent {
+    type: string;
+    data: string;
+    id?: string;
+}
+/** The error a stream's events throw when the network fails after the stream resolved, its
+ * \`problem\` the network problem a call would have resolved to. It is the one error the client
+ * throws; the caller's signal ends the events quietly instead. */
+export declare class StreamError extends Error {
+    readonly problem: Problem;
+    constructor(problem: Problem);
+}
+/** A call's outcome: the decoded body`,
+    reason: "a stream's events, and the error that carries a network failure after it resolved",
+  },
+  {
+    file: "api.d.ts",
+    from: ` * header of that name here, and Content-Type when it sends the body as JSON. */
+`,
+    to: ` * header of that name here, Content-Type when it sends the body as JSON, and Accept on a stream. */
+`,
+    reason: "a stream sets its own Accept header",
+  },
+  {
+    file: "api.d.ts",
+    from: ` * other body is sent as JSON. */
+`,
+    to: ` * other body is sent as JSON.
+ *
+ * \`stream\` sends a POST with the body when it is given one and a GET when it isn't, with
+ * \`Accept: text/event-stream\`, and resolves when the response's headers arrive, before its first
+ * event: to the problem, as any call's, or to the events, read as they arrive. A 2xx response that
+ * isn't text/event-stream is the decode problem. The caller's signal ends the events quietly; the
+ * network failing throws a StreamError; and leaving the loop early cancels the response. */
+`,
+    reason: "the client's stream, its request, when it resolves, and how its events end",
+  },
+  {
+    file: "api.d.ts",
+    from: `    delete<T>(path: string, options?: RequestOptions): Promise<Result<T>>;
+`,
+    to: `    delete<T>(path: string, options?: RequestOptions): Promise<Result<T>>;
+    stream(path: string, body?: unknown, options?: RequestOptions): Promise<Result<AsyncIterable<ServerSentEvent>>>;
+`,
+    reason: "the client streams a text/event-stream response's events",
+  },
+  {
+    file: "eventstream.d.ts",
+    reason: "the event-stream parser, internal: the client's stream reads a response through it",
+  },
+  {
     file: "router.d.ts",
     from: "/** Makes a router over `routes`. */\nexport declare function createRouter(routes: Routes, options: RouterOptions): Router;\n",
     to: "",
