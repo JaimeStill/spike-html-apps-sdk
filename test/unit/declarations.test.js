@@ -73,9 +73,110 @@ const differences = [
   },
   {
     file: "api.d.ts",
-    from: "/** Makes a client. */\nexport declare function createClient(options?: ClientOptions): Client;\n",
-    to: "",
-    reason: "createClient has no runtime yet, and a declaration of it would promise an export",
+    from: `    /** The HTTP status; 0 for a problem the client made itself (no response arrived). */
+`,
+    to: `    /** The HTTP status; 0 for a problem the client made itself with no response behind it, and the
+     * response's status for a 2xx body that didn't decode. */
+`,
+    reason:
+      "a 2xx body that doesn't decode is a problem the client makes with the response's status",
+  },
+  {
+    file: "api.d.ts",
+    from: `    request_id?: string;
+`,
+    to: `    request_id?: string;
+    /** Extension members: go-web-sdk merges a Problem's Extras in at the document's top level, and
+     * the client keeps every member the document carries. */
+    [member: string]: unknown;
+`,
+    reason:
+      "a problem document's extension members, which go-web-sdk merges in at its top level, are kept",
+  },
+  {
+    file: "api.d.ts",
+    from: `/** The type of a problem the client makes itself, with no response behind it: the network failed
+ * (fetch rejected with a TypeError), the caller's signal aborted the call, or the signal's timeout
+ * (AbortSignal.timeout) fired. A response that isn't a problem document becomes an "about:blank"
+ * problem with the response's status and status text. */
+`,
+    to: `/** The type of a problem the client makes itself, each with a fixed title. With no response behind
+ * it, status 0: the network failed (fetch rejected; "Network error"), the caller's signal aborted
+ * the call ("Request aborted"), or the signal's timeout (AbortSignal.timeout) fired ("Request timed
+ * out"). With the response's status: a 2xx body didn't decode as its content type claims
+ * ("Response not decodable"). A failing response that isn't a problem document becomes an
+ * "about:blank" problem titled with the response's status text, or "HTTP <status>" when it has
+ * none, as does a problem document with no title. */
+`,
+    reason:
+      "the client's problems name their fixed titles, the decode problem, and the untitled fallback",
+  },
+  {
+    file: "api.d.ts",
+    from: `"urn:standards-lab:problem:timeout";`,
+    to: `"urn:standards-lab:problem:timeout" | "urn:standards-lab:problem:decode";`,
+    reason:
+      "a 2xx body that doesn't decode as its content type claims is the client's decode problem",
+  },
+  {
+    file: "api.d.ts",
+    from: `/** A call's outcome: the decoded body, or the problem that stopped it. */
+`,
+    to: `/** A call's outcome: the decoded body, or the problem that stopped it. A body decodes by its content
+ * type: JSON (application/json or any +json type) parsed, text/* a string, any other a Blob, and no
+ * body (a 204 or 205, or an empty body) undefined. */
+`,
+    reason: "a success's data is decoded by content type, which the result names",
+  },
+  {
+    file: "api.d.ts",
+    from: `/** A call's options: the signal that aborts it. */
+`,
+    to: `/** A call's options: the signal that aborts it, the query parameters set on its URL, and the
+ * headers added to its request. A query value is set as its string; an array sets its name once per
+ * element, in order; an undefined value is left out. The client sets Authorization itself, over any
+ * header of that name here, and Content-Type when it sends the body as JSON. */
+`,
+    reason: "a call's options gain the query and headers, and how each applies",
+  },
+  {
+    file: "api.d.ts",
+    from: `    signal?: AbortSignal;
+`,
+    to: `    signal?: AbortSignal;
+    query?: Readonly<Record<string, string | number | boolean | readonly (string | number | boolean)[] | undefined>>;
+    headers?: Readonly<Record<string, string>>;
+`,
+    reason: "a call sets query parameters and adds headers",
+  },
+  {
+    file: "api.d.ts",
+    from: `/** How a client is made: the base URL every path is resolved under ("/api" by default), and the
+ * token provider whose token each call carries (anonymous by default). */
+`,
+    to: `/** How a client is made: the base every path joins under ("/api" by default), and the token
+ * provider whose token each call carries (anonymous by default). The base may be an absolute URL,
+ * on another origin. A path joins the base with one "/" whether or not it begins with one: under
+ * "/api", "documents/5" and "/documents/5" both give "/api/documents/5", where URL resolution would
+ * drop "/api" for the second. */
+`,
+    reason:
+      "a path joins the base by text, not URL resolution, and the base may be on another origin",
+  },
+  {
+    file: "api.d.ts",
+    from: `/** The API client. Each method sends the path under the base URL with
+ * \`Authorization: Bearer <token>\` when the provider has a token, and on a 401 asks the provider to
+ * refresh and retries once with the refreshed token, if there is one. A body is sent as JSON. */
+`,
+    to: `/** The API client. Each method sends the path, joined under the base, with
+ * \`Authorization: Bearer <token>\` when the provider has a token and none when it doesn't. On a 401
+ * it asks the provider to refresh and retries once with the refreshed token, or returns the 401's
+ * problem when the refresh gives none; 401s that arrive while a refresh is pending share that one
+ * refresh. A FormData, Blob, ArrayBuffer or view, or URLSearchParams body is sent as it is; any
+ * other body is sent as JSON. */
+`,
+    reason: "concurrent 401s share one refresh, and a body is sent as it is or as JSON by its kind",
   },
   {
     file: "router.d.ts",
