@@ -3,16 +3,11 @@
 // cursor rules, and, under tsc, the sequence satisfying EventSequence and a Cursor opaque to apps.
 
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { describe, test } from "node:test";
 
 import { memorySequence } from "./memory-sequence.ts";
 import { cloudEvent, sequenceContract } from "./sequence-contract.js";
-
-const root = join(import.meta.dirname, "../..");
+import { typecheck } from "./typecheck.js";
 
 sequenceContract("the in-memory sequence", (events, options) => memorySequence(events, options));
 
@@ -40,34 +35,14 @@ describe("the in-memory sequence's cursors", () => {
 
 describe("the event-sequence types", () => {
   test("the in-memory sequence satisfies EventSequence, and a string is no Cursor", () => {
-    const scratch = mkdtempSync(join(tmpdir(), "events-"));
-    try {
-      writeFileSync(
-        join(scratch, "bad.ts"),
-        [
-          `import type { Cursor, EventSequence } from "@jaimestill/spike-html-apps-sdk/events.js";`,
-          `export const cursor: Cursor = "1";`,
-          `export const sequence = { read: () => [] } satisfies EventSequence;`,
-        ].join("\n"),
-      );
-      const paths = { "@jaimestill/spike-html-apps-sdk/*": [join(root, "dist/*")] };
-      writeFileSync(
-        join(scratch, "tsconfig.json"),
-        JSON.stringify({
-          extends: join(root, "tsconfig.json"),
-          compilerOptions: { rootDir: "/", noEmit: true, paths },
-          files: [join(root, "test/unit/memory-sequence.ts"), join(scratch, "bad.ts")],
-        }),
-      );
-      const run = spawnSync("tsc", ["-p", "."], { cwd: scratch, encoding: "utf8" });
-      assert.equal(run.error, undefined, `tsc didn't run: ${run.error}`);
-      const errors = [...run.stdout.matchAll(/^(\S+?)\((\d+),\d+\): error (TS\d+)/gm)].map(
-        ([, path, line, code]) => `${path.split("/").pop()}:${line} ${code}`,
-      );
-      assert.equal(run.stdout.match(/error TS\d+/g)?.length ?? 0, errors.length, run.stdout);
-      assert.deepEqual(errors, ["bad.ts:2 TS2322", "bad.ts:3 TS2741"], run.stdout);
-    } finally {
-      rmSync(scratch, { recursive: true, force: true });
-    }
+    const bad = [
+      `import type { Cursor, EventSequence } from "@jaimestill/spike-html-apps-sdk/events.js";`,
+      `export const cursor: Cursor = "1";`,
+      `export const sequence = { read: () => [] } satisfies EventSequence;`,
+    ].join("\n");
+    assert.deepEqual(typecheck({ "bad.ts": bad }, ["test/unit/memory-sequence.ts"]), [
+      "bad.ts:2 TS2322",
+      "bad.ts:3 TS2741",
+    ]);
   });
 });

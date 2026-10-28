@@ -2,7 +2,7 @@
 // exports and against its license, by release.js's releaseProblems, as it stands and in scratch
 // copies with one fault each; and the pack's public subpaths, resolved through the package's own
 // name, with its internal module refused. It packs the dist/ that mise run build writes.
-// From spike-html-packages-sdk (9d10ca6): test/unit/release.test.js.
+// Adapted from spike-html-packages-sdk (9d10ca6): test/unit/release.test.js.
 
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -73,19 +73,6 @@ describe("release pack", () => {
 
   test("the pack is the release that files and exports declare", () => {
     assert.deepEqual(releaseProblems(pack, src, publics), []);
-  });
-
-  test("exports lists the public subpaths, each a types and a default condition", () => {
-    const manifest = JSON.parse(readFileSync(join(pack, "package.json"), "utf8"));
-    assert.deepEqual(
-      manifest.exports,
-      Object.fromEntries(
-        publics.map((subpath) => {
-          const base = `./dist/${subpath.slice(2, -".js".length)}`;
-          return [subpath, { types: `${base}.d.ts`, default: `${base}.js` }];
-        }),
-      ),
-    );
   });
 
   test("each public subpath resolves through the package's name to its build", () => {

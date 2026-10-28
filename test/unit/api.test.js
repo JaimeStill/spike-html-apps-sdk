@@ -3,18 +3,13 @@
 // chunks with delays between; and the sample documents service over it, at runtime and under tsc.
 
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
 import { once } from "node:events";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { after, before, describe, test } from "node:test";
 
 import { createClient, StreamError } from "@jaimestill/spike-html-apps-sdk/api.js";
 import { documents } from "./documents.ts";
-
-const root = join(import.meta.dirname, "../..");
+import { typecheck } from "./typecheck.js";
 
 /** Writes `body` (an object as JSON, a string or Buffer as it is) with `status`, `type`, and, when
  * given, the status text `message`. */
@@ -576,7 +571,8 @@ const ticked = [
   { type: "tick", data: "three", id: "3" },
 ];
 
-describe("the stream", () => {
+// An endless stream that a defect leaves unended would stall the run: the timeout fails it instead.
+describe("the stream", { timeout: 5000 }, () => {
   test("with no body, a GET with Accept: text/event-stream, its events parsed as they arrive", async () => {
     const [request, ...rest] = await collect(await client.stream("events"));
     assert.equal(request.type, "request");
@@ -659,16 +655,19 @@ describe("the stream", () => {
   });
 
   test("an abort while no read is pending ends the events quietly too", async () => {
-    const controller = new AbortController();
-    const result = await client.stream("events/endless", undefined, { signal: controller.signal });
-    const iterator = result.data[Symbol.asyncIterator]();
-    assert.equal((await iterator.next()).value.data, "1");
-    controller.abort();
-    await new Promise((resolve) => setTimeout(resolve, 30));
-    // Ticks parsed already may still come; the abort ends the events after them, with no throw.
-    let next;
-    do next = await iterator.next();
-    while (!next.done);
+    await alone(async (own, state) => {
+      const controller = new AbortController();
+      const result = await own.stream("events/endless", undefined, { signal: controller.signal });
+      const iterator = result.data[Symbol.asyncIterator]();
+      assert.equal((await iterator.next()).value.data, "1");
+      controller.abort();
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      // Ticks parsed already may still come; the abort ends the events after them, with no throw.
+      let next;
+      do next = await iterator.next();
+      while (!next.done);
+      await closed(state);
+    });
   });
 
   test("the socket destroyed mid-stream throws a StreamError with the network problem", async () => {
@@ -749,33 +748,10 @@ describe("the sample documents service", () => {
   });
 
   test("satisfies Service under tsc, which refuses a member that isn't an endpoint", () => {
-    const scratch = mkdtempSync(join(tmpdir(), "documents-"));
-    try {
-      writeFileSync(
-        join(scratch, "bad.ts"),
-        [
-          `import type { Service } from "@jaimestill/spike-html-apps-sdk/service.js";`,
-          `export const bad = { count: 1 } satisfies Service;`,
-        ].join("\n"),
-      );
-      const paths = { "@jaimestill/spike-html-apps-sdk/*": [join(root, "dist/*")] };
-      writeFileSync(
-        join(scratch, "tsconfig.json"),
-        JSON.stringify({
-          extends: join(root, "tsconfig.json"),
-          compilerOptions: { rootDir: "/", noEmit: true, paths },
-          files: [join(root, "test/unit/documents.ts"), join(scratch, "bad.ts")],
-        }),
-      );
-      const run = spawnSync("tsc", ["-p", "."], { cwd: scratch, encoding: "utf8" });
-      assert.equal(run.error, undefined, `tsc didn't run: ${run.error}`);
-      const errors = [...run.stdout.matchAll(/^(\S+?)\(\d+,\d+\): error (TS\d+)/gm)].map(
-        ([, path, code]) => `${path.split("/").pop()} ${code}`,
-      );
-      assert.equal(run.stdout.match(/error TS\d+/g)?.length ?? 0, errors.length, run.stdout);
-      assert.deepEqual(errors, ["bad.ts TS2322"], run.stdout);
-    } finally {
-      rmSync(scratch, { recursive: true, force: true });
-    }
+    const bad = [
+      `import type { Service } from "@jaimestill/spike-html-apps-sdk/service.js";`,
+      `export const bad = { count: 1 } satisfies Service;`,
+    ].join("\n");
+    assert.deepEqual(typecheck({ "bad.ts": bad }, ["test/unit/documents.ts"]), ["bad.ts:2 TS2322"]);
   });
 });
