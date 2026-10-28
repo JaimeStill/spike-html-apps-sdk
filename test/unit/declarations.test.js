@@ -289,14 +289,24 @@ export interface UploadOptions extends RequestOptions {
     from: `/** The type of a problem the client makes itself, each with a fixed title. With no response behind
  * it, status 0: the network failed (fetch rejected; "Network error"), the caller's signal aborted
  * the call ("Request aborted"), or the signal's timeout (AbortSignal.timeout) fired ("Request timed
- * out"). With the response's status:`,
+ * out"). With the response's status: a 2xx body didn't decode as its content type claims, or a
+ * stream's 2xx response isn't text/event-stream ("Response not decodable"). A failing response
+ * that isn't a problem document becomes an "about:blank" problem titled with the response's status
+ * text, or "HTTP <status>" when it has none, as does a problem document with no title. */
+`,
     to: `/** The type of a problem the client makes itself, each with a fixed title. With no response behind
  * it, status 0: the request body isn't encodable as JSON, JSON.stringify throwing on it (a BigInt,
  * a cycle) or giving nothing (a function, a symbol), and nothing is sent ("Request not encodable",
  * with the error's message as its detail when there is one); the request failed in flight (fetch
  * rejected; "Network error"); the caller's signal aborted the call ("Request aborted"); or the
- * signal's timeout (AbortSignal.timeout) fired ("Request timed out"). With the response's status:`,
-    reason: "the client names the encode problem, and the network problem only a failure in flight",
+ * signal's timeout (AbortSignal.timeout) fired ("Request timed out"). With the response's status:
+ * a 2xx body didn't decode as its content type claims, or a stream's 2xx response isn't
+ * text/event-stream ("Response not decodable"). A failing response that isn't a problem document
+ * becomes an "about:blank" problem titled with the response's status text, or "HTTP <status>"
+ * when that text is empty; a problem document with no title is titled "HTTP <status>". */
+`,
+    reason:
+      "the client names the encode problem, the network problem only a failure in flight, and the untitled rule plainly",
   },
   {
     file: "api.d.ts",
