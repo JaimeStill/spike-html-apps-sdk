@@ -1,10 +1,11 @@
 // The build, src/ into dist/: tsc emits each module's .js and .d.ts. mise run types checks the same
-// sources with --noEmit.
+// sources with --noEmit. esnext.disposable declares Symbol.asyncDispose, which @nats-io/nats-core's
+// declarations name and skipLibCheck false checks; no source uses it.
 // Adapted from spike-html-packages-sdk (9d10ca6): tsconfig.json.
 {
   "compilerOptions": {
     "target": "es2024",
-    "lib": ["es2024", "dom", "dom.iterable"],
+    "lib": ["es2024", "esnext.disposable", "dom", "dom.iterable"],
     "module": "esnext",
     "moduleResolution": "bundler",
     "types": [],

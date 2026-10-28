@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Fails naming mise run install when a tool a task needs is missing: the node_modules tooling, and
-# with `browser`, the pinned chrome-headless-shell.
+# Fails naming mise run install when a tool a task needs is missing: the node_modules tooling, with
+# `browser`, the pinned chrome-headless-shell, and with `nats`, the pinned nats-server.
 # Adapted from spike-html-packages-sdk (9d10ca6): scripts/preflight.sh, with
 # spike-html-apps-foundation's browser check.
 set -euo pipefail
@@ -13,6 +13,16 @@ fail() {
 for bin in eslint prettier; do
   [[ -x node_modules/.bin/$bin ]] || fail "$bin (devDependencies)"
 done
+
+if [[ "${1:-}" == nats ]]; then
+  server=$(mise which nats-server 2>/dev/null) || fail "nats-server"
+  pin=$(mise current nats-server)
+  if [[ "$("$server" --version)" != "nats-server: v$pin" ]]; then
+    echo "preflight: $server isn't nats-server $pin" >&2
+    exit 1
+  fi
+  exit 0
+fi
 
 [[ "${1:-}" == browser ]] || exit 0
 shell=$(mise which chrome-headless-shell 2>/dev/null) || fail "chrome-headless-shell"

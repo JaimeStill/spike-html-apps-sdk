@@ -56,6 +56,18 @@ export const violations = {
     ...forms("src/forms/typescript", "typescript"),
     ...forms("src/forms/self-name", `${sdk}/auth.js`),
   }),
+  // The NATS adapter's packages from any file but the adapter: the manifest declares them, as
+  // optional peer dependencies, but the table allows them to the adapter alone.
+  ...by([table], {
+    ...forms("src/forms/nats-core", "@nats-io/nats-core"),
+    ...forms("src/forms/jetstream", "@nats-io/jetstream"),
+    "src/events/nats-sibling.ts": `import { jetstream } from "@nats-io/jetstream";`,
+  }),
+  // The adapter from another module of the layer, which would load its packages with it.
+  ...by([table], {
+    ...forms("src/forms/adapter", "./../events/nats.ts"),
+    "src/events/adapter-value.ts": `import { natsSequence } from "./nats.ts";`,
+  }),
   // A package by a relative path into node_modules/.
   ...by([table, relativePackages], {
     "src/lit-path.ts": `import "../node_modules/lit/index.js";`,
@@ -88,6 +100,14 @@ export const allowed = {
   "src/declared-export-type.ts": `export type { Result } from "./declared.js";`,
   "src/declared-typeof.ts": `import type { createClient } from "./declared.js";\nexport type F = typeof createClient;`,
   "src/declared-export-all-type.ts": `export type * from "./declared.js";`,
+  // The adapter, which may import its packages, in each form, and what the layer may.
+  "src/events/nats.ts": [
+    `import { html } from "@nats-io/nats-core";`,
+    `import type { X } from "@nats-io/jetstream";`,
+    `export * from "@nats-io/jetstream";`,
+    `await import("@nats-io/nats-core");`,
+    `import type { X as Y } from "../api.ts";`,
+  ].join("\n"),
 };
 
 /** The files the cases import that no case is: the modules, the declaration, and the package's
@@ -107,8 +127,16 @@ const targets = {
 };
 
 /** The packages the cases name, as stubs in node_modules/: lit, the siblings, the app,
- * and typescript, a devDependency, each a module and its types at every subpath. */
-const externals = ["lit", ...siblings, app, "typescript"];
+ * typescript, a devDependency, and the NATS adapter's peer dependencies, each a module and its
+ * types at every subpath. */
+const externals = [
+  "lit",
+  ...siblings,
+  app,
+  "typescript",
+  "@nats-io/nats-core",
+  "@nats-io/jetstream",
+];
 const stub = (name) => ({
   "package.json": JSON.stringify({
     name,
