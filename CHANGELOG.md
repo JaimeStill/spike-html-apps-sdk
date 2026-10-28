@@ -32,10 +32,14 @@ All notable changes to `@jaimestill/spike-html-apps-sdk` are documented here. Th
   updated.
 - Breaking: the router's base, without the `base` option, is the document's `<base href>` before
   it falls back to `/`.
+- Breaking: `Client` gains the required members `stream` and `upload`, so code that implements
+  `Client`, an app's fake among it, must add them.
 - `Problem` keeps every extension member the problem document carries.
 - `ClientProblemType` gains `urn:standards-lab:problem:decode`, the problem of a 2xx body that
   doesn't decode as its content type claims, or of a stream's 2xx response that isn't
-  text/event-stream, which carries the response's status.
+  text/event-stream, which carries the response's status; and `urn:standards-lab:problem:encode`,
+  the problem of a request body JSON.stringify throws on or gives nothing for, status 0 and nothing
+  sent, which was the network problem before.
 - A call's `RequestOptions` gain `query`, its query parameters, and `headers`, added to its
   request.
 - `exports` lists the six public subpaths by name, each with a `types` and a `default` condition,

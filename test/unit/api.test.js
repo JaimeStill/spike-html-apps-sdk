@@ -200,10 +200,14 @@ function handle(req, res, state) {
   }
 }
 
-/** A loopback server over handle, listening; its origin and its per-server state. */
+/** A loopback server over handle, listening; its origin and its per-server state, which counts
+ * the requests it receives. */
 async function serve() {
-  const state = { authHits: 0, closed: 0, gate: Promise.resolve() };
-  const server = createServer((req, res) => handle(req, res, state));
+  const state = { authHits: 0, closed: 0, requests: 0, gate: Promise.resolve() };
+  const server = createServer((req, res) => {
+    state.requests++;
+    handle(req, res, state);
+  });
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
   const origin = `http://127.0.0.1:${server.address().port}`;
@@ -347,6 +351,40 @@ describe("the problems the client makes itself", () => {
       ok: false,
       problem: { type: "urn:standards-lab:problem:timeout", status: 0, title: "Request timed out" },
     });
+  });
+
+  const cyclic = { title: "loop" };
+  cyclic.self = cyclic;
+  const unencodable = [
+    ["a BigInt", { n: 1n }, /BigInt/],
+    ["a cycle", cyclic, /circular/],
+    ["a function", () => {}, undefined],
+  ];
+  for (const [name, body, detail] of unencodable) {
+    test(`a body JSON.stringify can't encode (${name}) is the encode problem, nothing sent`, async () => {
+      const before = loopback.state.requests;
+      for (const result of [await client.post("echo", body), await client.stream("events", body)]) {
+        assert.equal(result.ok, false);
+        const { detail: given, ...problem } = result.problem;
+        assert.deepEqual(problem, {
+          type: "urn:standards-lab:problem:encode",
+          status: 0,
+          title: "Request not encodable",
+        });
+        if (detail === undefined) assert.equal(given, undefined);
+        else assert.match(given, detail);
+      }
+      assert.equal(loopback.state.requests, before);
+    });
+  }
+
+  test("an undefined body is no body, sent as any call without one", async () => {
+    const before = loopback.state.requests;
+    const result = await client.post("echo", undefined);
+    assert.equal(result.data.method, "POST");
+    assert.equal(result.data.headers["content-type"], undefined);
+    assert.equal(result.data.body, "");
+    assert.equal(loopback.state.requests, before + 1);
   });
 });
 

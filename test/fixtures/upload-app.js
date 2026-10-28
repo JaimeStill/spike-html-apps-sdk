@@ -4,10 +4,13 @@
 
 import { createClient } from "@jaimestill/spike-html-apps-sdk/api.js";
 
-/** A body of `size` bytes: a Blob, a File, or a FormData holding a File and a field. */
+/** A body of `size` bytes: a Blob, a File, or a FormData holding a File and a field; or, for
+ * "bigint", an object JSON.stringify can't encode. */
 function body(kind, size) {
   const bytes = new Uint8Array(size).fill(97);
   switch (kind) {
+    case "bigint":
+      return { size: BigInt(size) };
     case "file":
       return new File([bytes], "upload.bin", { type: "application/octet-stream" });
     case "form": {

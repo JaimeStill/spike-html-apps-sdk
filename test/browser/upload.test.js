@@ -164,6 +164,20 @@ describe("the upload's 401", () => {
 });
 
 describe("the problems the upload makes itself", () => {
+  test("a body JSON.stringify can't encode is the encode problem, nothing sent", async () => {
+    const { result, progress } = await upload({ route: "echo", kind: "bigint", size: 10 });
+    assert.equal(result.ok, false);
+    const { detail, ...problem } = result.problem;
+    assert.deepEqual(problem, {
+      type: "urn:standards-lab:problem:encode",
+      status: 0,
+      title: "Request not encodable",
+    });
+    assert.match(detail, /BigInt/);
+    // No send started: the progress callback, called at 0 as each send starts, never ran.
+    assert.deepEqual(progress, []);
+  });
+
   test("the caller's signal aborting mid-body is the abort problem", async () => {
     const { result, progress } = await upload({ route: "echo", size: LARGE, abort: "progress" });
     assert.deepEqual(result, {

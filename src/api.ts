@@ -31,9 +31,11 @@ export interface Problem {
 }
 
 /** The type of a problem the client makes itself, each with a fixed title. With no response behind
- * it, status 0: the network failed (fetch rejected; "Network error"), the caller's signal aborted
- * the call ("Request aborted"), or the signal's timeout (AbortSignal.timeout) fired ("Request timed
- * out"). With the response's status: a 2xx body didn't decode as its content type claims, or a
+ * it, status 0: the request body isn't encodable as JSON, JSON.stringify throwing on it (a BigInt,
+ * a cycle) or giving nothing (a function, a symbol), and nothing is sent ("Request not encodable",
+ * with the error's message as its detail when there is one); the request failed in flight (fetch
+ * rejected; "Network error"); the caller's signal aborted the call ("Request aborted"); or the
+ * signal's timeout (AbortSignal.timeout) fired ("Request timed out"). With the response's status: a 2xx body didn't decode as its content type claims, or a
  * stream's 2xx response isn't text/event-stream ("Response not decodable"). A failing response
  * that isn't a problem document becomes an "about:blank" problem titled with the response's status
  * text, or "HTTP <status>" when it has none, as does a problem document with no title. */
@@ -41,7 +43,8 @@ export type ClientProblemType =
   | "urn:standards-lab:problem:network"
   | "urn:standards-lab:problem:abort"
   | "urn:standards-lab:problem:timeout"
-  | "urn:standards-lab:problem:decode";
+  | "urn:standards-lab:problem:decode"
+  | "urn:standards-lab:problem:encode";
 
 /** One event of a text/event-stream response, as the WHATWG HTML standard parses it: its type,
  * "message" when the stream names none; its data, its data lines joined with "\n"; and the last
@@ -386,8 +389,13 @@ function join(base: string, path: string, query: RequestOptions["query"]): strin
   return url;
 }
 
+/** The error `encode` throws for a body JSON.stringify can't encode, which `failure` makes the encode
+ * problem; its message is the stringify error's, or empty when stringify gave nothing. */
+class Unencodable extends Error {}
+
 /** The request body for `body`: none for undefined, the kinds fetch and XMLHttpRequest send as they
- * are, and JSON, with its Content-Type set on `headers`, for any other. */
+ * are, and JSON, with its Content-Type set on `headers`, for any other. A body JSON.stringify throws
+ * on, or gives nothing for, throws Unencodable before anything is sent. */
 function encode(body: unknown, headers: Headers): XMLHttpRequestBodyInit | undefined {
   if (body === undefined) return undefined;
   if (
@@ -399,8 +407,16 @@ function encode(body: unknown, headers: Headers): XMLHttpRequestBodyInit | undef
   ) {
     return body as XMLHttpRequestBodyInit;
   }
+  let json: string | undefined;
+  try {
+    json = JSON.stringify(body);
+  } catch (error) {
+    throw new Unencodable(error instanceof Error ? error.message : String(error));
+  }
+  // JSON.stringify's type claims a string, but it gives undefined for a function or a symbol.
+  if (json === undefined) throw new Unencodable();
   headers.set("Content-Type", "application/json");
-  return JSON.stringify(body);
+  return json;
 }
 
 /** The response's media type, lowercased, without its parameters; "" when it has none. */
@@ -467,8 +483,19 @@ async function problem(response: Response): Promise<Problem> {
   return { type: "about:blank", status: response.status, title: response.statusText || fallback };
 }
 
-/** The problem for an error the call threw: the signal's abort, its timeout, or the network. */
+/** The problem for an error the call threw: a body that isn't encodable, the signal's abort, its
+ * timeout, or the network. */
 function failure(error: unknown, signal: AbortSignal | undefined): Problem {
+  if (error instanceof Unencodable) {
+    // Thrown before any send, so it is the cause even under a signal that has since aborted.
+    const problem: Problem = {
+      type: "urn:standards-lab:problem:encode",
+      status: 0,
+      title: "Request not encodable",
+    };
+    if (error.message) problem.detail = error.message;
+    return problem;
+  }
   if (signal?.aborted) {
     // AbortSignal.timeout aborts with a DOMException named TimeoutError; any other reason is the
     // caller's abort.

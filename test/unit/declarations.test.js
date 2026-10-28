@@ -285,6 +285,26 @@ export interface UploadOptions extends RequestOptions {
     reason: "the client uploads a body, reporting its progress",
   },
   {
+    file: "api.d.ts",
+    from: `/** The type of a problem the client makes itself, each with a fixed title. With no response behind
+ * it, status 0: the network failed (fetch rejected; "Network error"), the caller's signal aborted
+ * the call ("Request aborted"), or the signal's timeout (AbortSignal.timeout) fired ("Request timed
+ * out"). With the response's status:`,
+    to: `/** The type of a problem the client makes itself, each with a fixed title. With no response behind
+ * it, status 0: the request body isn't encodable as JSON, JSON.stringify throwing on it (a BigInt,
+ * a cycle) or giving nothing (a function, a symbol), and nothing is sent ("Request not encodable",
+ * with the error's message as its detail when there is one); the request failed in flight (fetch
+ * rejected; "Network error"); the caller's signal aborted the call ("Request aborted"); or the
+ * signal's timeout (AbortSignal.timeout) fired ("Request timed out"). With the response's status:`,
+    reason: "the client names the encode problem, and the network problem only a failure in flight",
+  },
+  {
+    file: "api.d.ts",
+    from: `"urn:standards-lab:problem:decode";`,
+    to: `"urn:standards-lab:problem:decode" | "urn:standards-lab:problem:encode";`,
+    reason: "a request body JSON.stringify can't encode is the client's encode problem, unsent",
+  },
+  {
     file: "eventstream.d.ts",
     reason: "the event-stream parser, internal: the client's stream reads a response through it",
   },
