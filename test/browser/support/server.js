@@ -4,7 +4,7 @@
 // the upload's cases send to. The pages load the package's built dist/, so nothing needs
 // transforming.
 // Adapted from spike-html-apps-foundation (679e550): test/browser/support/server.js, given the
-// shell page.
+// shell page and the upload's routes.
 
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";

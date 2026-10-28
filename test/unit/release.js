@@ -2,7 +2,7 @@
 // exports, which Node itself resolves to the public modules alone, and the Apache 2.0 LICENSE its
 // manifest declares.
 // test/unit/release.test.js runs it on a pnpm pack.
-// From spike-html-packages-sdk (9d10ca6): test/unit/release.js.
+// Adapted from spike-html-packages-sdk (9d10ca6): test/unit/release.js.
 
 import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";

@@ -36,5 +36,6 @@ The architecture pages that apply, in the architecture repository:
 - A copied file names its source repository and commit in a provenance line, which reads
   `From|Adapted from <repo> (<commit>): <path>`. It names the immediate source alone; that source
   keeps the earlier lines.
-- Handwritten `.d.ts` use `.js` relative specifiers.
+- Sources use `.ts` relative specifiers, which tsc rewrites; handwritten `.d.ts` keep `.js`.
+- The browser tier tests `dist/`, and no server transforms what it serves.
 - A mise task runs one script or one command, and `check` is a depends list.
