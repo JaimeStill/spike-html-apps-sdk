@@ -5,7 +5,7 @@
 
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, describe, test } from "node:test";
@@ -16,7 +16,6 @@ import { anonymous } from "@jaimestill/spike-html-apps-sdk/auth.js";
 import { natsSequence } from "@jaimestill/spike-html-apps-sdk/events/nats.js";
 
 import { startServer } from "./nats-server.js";
-import { listFiles } from "./release.js";
 import { cloudEvent, sequenceContract } from "./sequence-contract.js";
 
 const root = join(import.meta.dirname, "../..");
@@ -334,9 +333,10 @@ describe("the optional peer dependencies", () => {
       mkdirSync(pkg, { recursive: true });
       cpSync(join(root, "package.json"), join(pkg, "package.json"));
       cpSync(join(root, "dist"), join(pkg, "dist"), { recursive: true });
-      const subpaths = listFiles(join(root, "dist"))
-        .filter((path) => path.endsWith(".js"))
-        .map((path) => `@jaimestill/spike-html-apps-sdk/${path}`);
+      const { exports } = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+      const subpaths = Object.keys(exports).map(
+        (subpath) => `@jaimestill/spike-html-apps-sdk${subpath.slice(1)}`,
+      );
       assert.ok(subpaths.includes("@jaimestill/spike-html-apps-sdk/events/nats.js"));
       const script = join(scratch, "load.mjs");
       writeFileSync(

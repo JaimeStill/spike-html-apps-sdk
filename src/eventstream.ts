@@ -2,8 +2,7 @@
 // dispatches, by the WHATWG HTML standard's "Parsing an event stream" and "Interpreting an event
 // stream" (§9.2.5–9.2.6), written here so the SDK takes no dependency for it. It is internal: the
 // client's stream reads a response through it, and an app reads the events stream resolves to,
-// never this module, which package.json's exports pattern reaches only because it reaches every
-// built module.
+// never this module, which package.json's exports leaves out.
 
 import type { ServerSentEvent } from "./api.ts";
 

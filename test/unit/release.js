@@ -1,5 +1,6 @@
 // A release's shape: a pack of the build checked against the sources, package.json's files and
-// exports, which Node itself resolves, and the Apache 2.0 LICENSE its manifest declares.
+// exports, which Node itself resolves to the public modules alone, and the Apache 2.0 LICENSE its
+// manifest declares.
 // test/unit/release.test.js runs it on a pnpm pack.
 // From spike-html-packages-sdk (9d10ca6): test/unit/release.js.
 
@@ -25,22 +26,33 @@ function star(pattern) {
 
 // Node's condition sets: its defaults, and with types, the condition TypeScript adds.
 const conditionSets = [[], ["--conditions=types"]];
-// Each specifier in argv resolved as the package's own import, or null where Node refuses it.
+// Each specifier in argv resolved as the package's own import: its URL, or the code of the error
+// with which Node refuses it.
 const resolveArgs = `console.log(JSON.stringify(process.argv.slice(1).map((specifier) => {
-  try { return import.meta.resolve(specifier); } catch { return null; }
+  try { return { url: import.meta.resolve(specifier) }; } catch (error) { return { code: error.code }; }
 })));`;
+
+/** Each subpath of the package at root as Node resolves it by self-reference under `conditions`
+ * (Node's flags), in order: { path } relative to root, or { code } where Node refuses it. */
+export function resolveSelf(root, subpaths, conditions = []) {
+  const { name } = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+  const specifiers = subpaths.map((subpath) => name + subpath.slice(1));
+  const args = [...conditions, "--input-type=module", "-e", resolveArgs, ...specifiers];
+  const results = JSON.parse(execFileSync(process.execPath, args, { cwd: root, encoding: "utf8" }));
+  return results.map(({ url, code }) =>
+    url === undefined
+      ? { code }
+      : { path: relative(root, fileURLToPath(url)).split(sep).join("/") },
+  );
+}
 
 /** The paths, relative to root, that Node resolves each subpath of the package at root to under
  * any condition set, by self-reference, as { subpath: Set }; none where Node refuses it. */
-function resolveSubpaths(root, name, subpaths) {
-  const specifiers = subpaths.map((subpath) => name + subpath.slice(1));
+function resolveSubpaths(root, subpaths) {
   const resolved = Object.fromEntries(subpaths.map((subpath) => [subpath, new Set()]));
   for (const conditions of conditionSets) {
-    const args = [...conditions, "--input-type=module", "-e", resolveArgs, ...specifiers];
-    const urls = JSON.parse(execFileSync(process.execPath, args, { cwd: root, encoding: "utf8" }));
-    urls.forEach((url, i) => {
-      if (url === null) return;
-      resolved[subpaths[i]].add(relative(root, fileURLToPath(url)).split(sep).join("/"));
+    resolveSelf(root, subpaths, conditions).forEach(({ path }, i) => {
+      if (path !== undefined) resolved[subpaths[i]].add(path);
     });
   }
   return resolved;
@@ -81,8 +93,10 @@ export function licenseProblems(root) {
 }
 
 /** What keeps root, a pack's package/, from being the release its package.json declares for the
- * sources in `src`, one line each. */
-export function releaseProblems(root, src) {
+ * sources in `src` with the `publics` subpaths, one line each. A public subpath, such as
+ * "./api.js", is its module's built .js and .d.ts; every other built module is internal, reached
+ * by the public ones' relative imports and never through the package's name. */
+export function releaseProblems(root, src, publics) {
   const problems = licenseProblems(root);
   const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
   const { exports = {}, files = [] } = manifest;
@@ -122,10 +136,24 @@ export function releaseProblems(root, src) {
     if (!shipped(path)) problems.push(`${path} isn't under package.json's files`);
   }
 
+  // exports lists the public subpaths, each with a types and a default condition, and nothing
+  // else: no pattern, which would reach an internal module too.
+  for (const subpath of publics) {
+    if (!(subpath in exports)) problems.push(`exports has no "${subpath}"`);
+  }
+  for (const [key, entry] of Object.entries(exports)) {
+    if (entry === null) continue;
+    if (!publics.includes(key)) problems.push(`exports["${key}"] isn't a public subpath`);
+    else if (typeof entry !== "object" || Object.keys(entry).join() !== "types,default") {
+      problems.push(`exports["${key}"] isn't a types and a default condition`);
+    }
+  }
+
   // exports: every entry a target or a flat object of condition targets, or null, which excludes
-  // its subpath; every built file reached through an export as Node resolves it; every pattern key
-  // reaching a built file; and every target Node resolves an export to built. The subpaths judged
-  // are the exact keys and each built file's subpath through a pattern target that matches it.
+  // its subpath; every public module's built file reached through an export as Node resolves it,
+  // and no internal module's subpath resolved at all; every pattern key reaching a built file; and
+  // every target Node resolves an export to built. The subpaths judged are the exact keys, each
+  // built file's subpath through a pattern target that matches it, and each internal module's.
   const subpaths = new Set();
   const origins = [];
   for (const [key, entry] of Object.entries(exports)) {
@@ -161,11 +189,25 @@ export function releaseProblems(root, src) {
       }
     }
   }
-  const resolved = resolveSubpaths(root, manifest.name, [...subpaths]);
+  const publicFiles = new Set(
+    publics.flatMap((subpath) => {
+      const base = `dist/${subpath.slice(2, -".js".length)}`;
+      return [`${base}.js`, `${base}.d.ts`];
+    }),
+  );
+  const internals = built
+    .filter((path) => path.endsWith(".js") && !publicFiles.has(path))
+    .map((path) => `./${path.slice("dist/".length)}`);
+  const resolved = resolveSubpaths(root, [...new Set([...subpaths, ...internals])]);
   const reached = origins.filter(({ subpath, path }) => resolved[subpath].has(path));
   for (const path of built) {
-    if (!reached.some((origin) => origin.path === path)) {
+    if (publicFiles.has(path) && !reached.some((origin) => origin.path === path)) {
       problems.push(`${path} is reachable through no export`);
+    }
+  }
+  for (const subpath of internals) {
+    if (resolved[subpath].size > 0) {
+      problems.push(`${subpath} is internal, but resolves through the package's name`);
     }
   }
   for (const key of Object.keys(exports)) {
