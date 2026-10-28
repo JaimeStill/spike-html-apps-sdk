@@ -246,6 +246,45 @@ export declare class StreamError extends Error {
     reason: "the client streams a text/event-stream response's events",
   },
   {
+    file: "api.d.ts",
+    from: `    headers?: Readonly<Record<string, string>>;
+}
+`,
+    to: `    headers?: Readonly<Record<string, string>>;
+}
+/** An upload's options: a call's, the method, POST by default or PUT, and \`progress\`, called with
+ * the bytes of the body sent and its total as the body goes out: at 0 when each send starts, a
+ * retry's included, then as bytes are sent, and at the total once the whole body is sent. The
+ * total is 0 when the browser can't compute it. */
+export interface UploadOptions extends RequestOptions {
+    method?: "POST" | "PUT";
+    progress?: (sent: number, total: number) => void;
+}
+`,
+    reason: "an upload's options: a call's, its method, and the progress callback",
+  },
+  {
+    file: "api.d.ts",
+    from: ` * network failing throws a StreamError; and leaving the loop early cancels the response. */
+`,
+    to: ` * network failing throws a StreamError; and leaving the loop early cancels the response.
+ *
+ * \`upload\` sends the body over XMLHttpRequest, as any call's body is sent, reporting its progress,
+ * and resolves as any call does, its data decoded and its problems made the same way. Where there
+ * is no XMLHttpRequest (on Node, say) it resolves to the network problem. */
+`,
+    reason: "the client's upload, over XMLHttpRequest, and its Result where there is none",
+  },
+  {
+    file: "api.d.ts",
+    from: `    stream(path: string, body?: unknown, options?: RequestOptions): Promise<Result<AsyncIterable<ServerSentEvent>>>;
+`,
+    to: `    stream(path: string, body?: unknown, options?: RequestOptions): Promise<Result<AsyncIterable<ServerSentEvent>>>;
+    upload<T>(path: string, body: unknown, options?: UploadOptions): Promise<Result<T>>;
+`,
+    reason: "the client uploads a body, reporting its progress",
+  },
+  {
     file: "eventstream.d.ts",
     reason: "the event-stream parser, internal: the client's stream reads a response through it",
   },

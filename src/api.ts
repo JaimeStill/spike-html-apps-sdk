@@ -1,7 +1,7 @@
-// The application SDK's API client, on fetch and AbortSignal: the problem, the result, the page,
-// the server-sent event, the client's options and shape, and createClient. Every call resolves to a
-// Result and never rejects; a stream's events, read after it resolves, are the one place an error
-// is thrown.
+// The application SDK's API client, on fetch and AbortSignal, and on XMLHttpRequest for an upload,
+// whose progress fetch doesn't report: the problem, the result, the page, the server-sent event,
+// the client's options and shape, and createClient. Every call resolves to a Result and never
+// rejects; a stream's events, read after it resolves, are the one place an error is thrown.
 // Adapted from spike-html-packages-sdk (9d10ca6): src/api.d.ts, its declarations made a module.
 // test/fixtures/v0.1.0/api.d.ts is that file, which the emitted declaration matches but for the
 // differences test/unit/declarations.test.js expects.
@@ -96,6 +96,15 @@ export interface RequestOptions {
   headers?: Readonly<Record<string, string>>;
 }
 
+/** An upload's options: a call's, the method, POST by default or PUT, and `progress`, called with
+ * the bytes of the body sent and its total as the body goes out: at 0 when each send starts, a
+ * retry's included, then as bytes are sent, and at the total once the whole body is sent. The
+ * total is 0 when the browser can't compute it. */
+export interface UploadOptions extends RequestOptions {
+  method?: "POST" | "PUT";
+  progress?: (sent: number, total: number) => void;
+}
+
 /** How a client is made: the base every path joins under ("/api" by default), and the token
  * provider whose token each call carries (anonymous by default). The base may be an absolute URL,
  * on another origin. A path joins the base with one "/" whether or not it begins with one: under
@@ -117,7 +126,11 @@ export interface ClientOptions {
  * `Accept: text/event-stream`, and resolves when the response's headers arrive, before its first
  * event: to the problem, as any call's, or to the events, read as they arrive. A 2xx response that
  * isn't text/event-stream is the decode problem. The caller's signal ends the events quietly; the
- * network failing throws a StreamError; and leaving the loop early cancels the response. */
+ * network failing throws a StreamError; and leaving the loop early cancels the response.
+ *
+ * `upload` sends the body over XMLHttpRequest, as any call's body is sent, reporting its progress,
+ * and resolves as any call does, its data decoded and its problems made the same way. Where there
+ * is no XMLHttpRequest (on Node, say) it resolves to the network problem. */
 export interface Client {
   get<T>(path: string, options?: RequestOptions): Promise<Result<T>>;
   post<T>(path: string, body?: unknown, options?: RequestOptions): Promise<Result<T>>;
@@ -129,6 +142,7 @@ export interface Client {
     body?: unknown,
     options?: RequestOptions,
   ): Promise<Result<AsyncIterable<ServerSentEvent>>>;
+  upload<T>(path: string, body: unknown, options?: UploadOptions): Promise<Result<T>>;
 }
 
 /** Makes a client. */
@@ -145,33 +159,52 @@ export function createClient(options: ClientOptions = {}): Client {
     return refreshing;
   }
 
-  /** The response to the request, its token carried and a 401 refreshed and retried once; it
-   * rejects as fetch does. `accept`, when given, is the Accept header, over any of the caller's. */
+  /** The response that `send` gives, sending the request with its headers, which carry the
+   * provider's token, and once more with the refreshed token after a 401; it rejects as `send`
+   * does. Every request, a call's, a stream's, and an upload's, is sent through it. `accept`, when
+   * given, is the Accept header, over any of the caller's. */
   async function respond(
-    method: string,
     path: string,
     body: unknown,
     request: RequestOptions,
+    send: (
+      url: string,
+      headers: Headers,
+      payload: XMLHttpRequestBodyInit | undefined,
+    ) => Promise<Response>,
     accept?: string,
   ): Promise<Response> {
     const url = join(base, path, request.query);
     const headers = new Headers(request.headers);
     if (accept !== undefined) headers.set("Accept", accept);
     const payload = encode(body, headers);
-    const send = (token: string | undefined) => {
+    const authorized = (token: string | undefined) => {
       if (token === undefined) headers.delete("Authorization");
       else headers.set("Authorization", `Bearer ${token}`);
-      return fetch(url, { method, headers, body: payload, signal: request.signal });
+      return send(url, headers, payload);
     };
-    let response = await send(await settle(auth.token()));
+    let response = await authorized(await settle(auth.token()));
     if (response.status === 401) {
       const token = await refresh();
       if (token !== undefined) {
         await response.body?.cancel();
-        response = await send(token);
+        response = await authorized(token);
       }
     }
     return response;
+  }
+
+  /** `respond` over fetch, for a call and a stream. */
+  function fetched(
+    method: string,
+    path: string,
+    body: unknown,
+    request: RequestOptions,
+    accept?: string,
+  ): Promise<Response> {
+    const send = (url: string, headers: Headers, payload: BodyInit | undefined) =>
+      fetch(url, { method, headers, body: payload, signal: request.signal });
+    return respond(path, body, request, send, accept);
   }
 
   async function call<T>(
@@ -181,7 +214,7 @@ export function createClient(options: ClientOptions = {}): Client {
     request: RequestOptions = {},
   ): Promise<Result<T>> {
     try {
-      return await decode<T>(await respond(method, path, body, request));
+      return await decode<T>(await fetched(method, path, body, request));
     } catch (error) {
       return { ok: false, problem: failure(error, request.signal) };
     }
@@ -194,7 +227,7 @@ export function createClient(options: ClientOptions = {}): Client {
   ): Promise<Result<AsyncIterable<ServerSentEvent>>> {
     const method = body === undefined ? "GET" : "POST";
     try {
-      const response = await respond(method, path, body, request, "text/event-stream");
+      const response = await fetched(method, path, body, request, "text/event-stream");
       if (!response.ok) return { ok: false, problem: await problem(response) };
       const type = mediaType(response);
       if (type !== "text/event-stream" || response.body === null) {
@@ -215,6 +248,24 @@ export function createClient(options: ClientOptions = {}): Client {
     }
   }
 
+  async function upload<T>(
+    path: string,
+    body: unknown,
+    request: UploadOptions = {},
+  ): Promise<Result<T>> {
+    try {
+      if (typeof XMLHttpRequest === "undefined") {
+        throw new TypeError("XMLHttpRequest is not available here; upload needs a browser");
+      }
+      const method = request.method ?? "POST";
+      const send = (url: string, headers: Headers, payload: XMLHttpRequestBodyInit | undefined) =>
+        transmit(method, url, headers, payload, request);
+      return await decode<T>(await respond(path, body, request, send));
+    } catch (error) {
+      return { ok: false, problem: failure(error, request.signal) };
+    }
+  }
+
   return {
     get: (path, options) => call("GET", path, undefined, options),
     post: (path, body, options) => call("POST", path, body, options),
@@ -222,7 +273,65 @@ export function createClient(options: ClientOptions = {}): Client {
     patch: (path, body, options) => call("PATCH", path, body, options),
     delete: (path, options) => call("DELETE", path, undefined, options),
     stream: (path, body, options) => stream(path, body, options),
+    upload: (path, body, options) => upload(path, body, options),
   };
+}
+
+/** One send of an upload over XMLHttpRequest, resolving to its response as a Response, so it
+ * decodes, and makes its problem, as fetch's does. It rejects as fetch does: with the signal's
+ * reason when the signal aborts it, and with a TypeError when the network fails. */
+function transmit(
+  method: string,
+  url: string,
+  headers: Headers,
+  payload: XMLHttpRequestBodyInit | undefined,
+  request: UploadOptions,
+): Promise<Response> {
+  const { signal, progress } = request;
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(signal.reason);
+    const xhr = new XMLHttpRequest();
+    xhr.open(method, url);
+    xhr.responseType = "blob";
+    headers.forEach((value, name) => xhr.setRequestHeader(name, value));
+    if (progress !== undefined) {
+      // loadstart reports 0 as each send starts, a retry's too, and load the total once the whole
+      // body is sent. A listener on xhr.upload makes a cross-origin upload preflighted.
+      const report = (event: ProgressEvent) => progress(event.loaded, event.total);
+      for (const type of ["loadstart", "progress", "load"]) {
+        xhr.upload.addEventListener(type, report as EventListener);
+      }
+    }
+    const abort = () => xhr.abort();
+    signal?.addEventListener("abort", abort, { once: true });
+    xhr.addEventListener("loadend", () => signal?.removeEventListener("abort", abort));
+    xhr.addEventListener("load", () => {
+      try {
+        resolve(response(xhr));
+      } catch (error) {
+        reject(error);
+      }
+    });
+    xhr.addEventListener("error", () => reject(new TypeError(`${method} ${url} failed`)));
+    xhr.addEventListener("abort", () => reject(signal?.reason));
+    xhr.send(payload ?? null);
+  });
+}
+
+/** A finished XMLHttpRequest's response as a Response: its status, status text, headers, and its
+ * body, none for a status that may carry none. */
+function response(xhr: XMLHttpRequest): Response {
+  const headers = new Headers();
+  for (const line of xhr.getAllResponseHeaders().trim().split(/\r?\n/)) {
+    const colon = line.indexOf(":");
+    if (colon > 0) headers.append(line.slice(0, colon).trim(), line.slice(colon + 1).trim());
+  }
+  const empty = [204, 205, 304].includes(xhr.status);
+  return new Response(empty ? null : (xhr.response as Blob), {
+    status: xhr.status,
+    statusText: xhr.statusText,
+    headers,
+  });
 }
 
 /** The events of a text/event-stream body, parsed as its chunks arrive. A read that fails ends
@@ -277,9 +386,9 @@ function join(base: string, path: string, query: RequestOptions["query"]): strin
   return url;
 }
 
-/** The request body for `body`: none for undefined, the kinds fetch sends as they are, and JSON,
- * with its Content-Type set on `headers`, for any other. */
-function encode(body: unknown, headers: Headers): BodyInit | undefined {
+/** The request body for `body`: none for undefined, the kinds fetch and XMLHttpRequest send as they
+ * are, and JSON, with its Content-Type set on `headers`, for any other. */
+function encode(body: unknown, headers: Headers): XMLHttpRequestBodyInit | undefined {
   if (body === undefined) return undefined;
   if (
     body instanceof FormData ||
@@ -288,7 +397,7 @@ function encode(body: unknown, headers: Headers): BodyInit | undefined {
     ArrayBuffer.isView(body) ||
     body instanceof URLSearchParams
   ) {
-    return body as BodyInit;
+    return body as XMLHttpRequestBodyInit;
   }
   headers.set("Content-Type", "application/json");
   return JSON.stringify(body);

@@ -723,6 +723,25 @@ describe("the sample documents service", () => {
     ]);
   });
 
+  // Node has no XMLHttpRequest, so the upload's own cases run in the browser tier.
+  test("upload resolves to the network problem where there is no XMLHttpRequest", async () => {
+    assert.equal(typeof XMLHttpRequest, "undefined");
+    let progressed = false;
+    const result = await documents(client).upload(2, new Blob(["text"]), () => {
+      progressed = true;
+    });
+    assert.deepEqual(result, {
+      ok: false,
+      problem: {
+        type: "urn:standards-lab:problem:network",
+        status: 0,
+        title: "Network error",
+        detail: "XMLHttpRequest is not available here; upload needs a browser",
+      },
+    });
+    assert.equal(progressed, false);
+  });
+
   test("list resolves a Page", async () => {
     // The server echoes the page number it was sent.
     const result = await documents(client).list(2);
