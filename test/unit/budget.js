@@ -1,6 +1,7 @@
 // A release's size budget: the brotli bytes of a pack's runtime files, its .js and .css, against a
 // budget in bytes. The dependencies a consumer installs beside the pack are never counted.
 // test/unit/release.test.js runs it on a pnpm pack.
+// From spike-html-apps-foundation (f50a62a): test/unit/budget.js.
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
