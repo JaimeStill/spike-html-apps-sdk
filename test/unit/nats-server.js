@@ -1,7 +1,7 @@
 // The NATS tier's server: the nats-server NATS_SERVER names (mise.toml's pin, which mise run
 // test:unit passes), started with a generated config on the loopback address, its WebSocket
 // listener without TLS, JetStream in a temporary store, and an authorization token. The process
-// management follows test/browser/support/browser-pipe.js.
+// management follows @jaimestill/spike-html-apps-tooling/browser.js's launch().
 
 import { spawn } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";

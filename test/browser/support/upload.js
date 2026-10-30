@@ -1,23 +1,8 @@
-// The browser tier's static server: the repository root over plain http on the loopback address,
-// every file sent as it is on disk, and the shell page for every path with no extension, as an
-// app's server sends its shell for each of the app's deep links; and, under /upload/, the routes
-// the upload's cases send to. The pages load the package's built dist/, so nothing needs
-// transforming.
-// Adapted from spike-html-apps-foundation (679e550): test/browser/support/server.js, given the
-// shell page and the upload's routes.
-
-import { readFile } from "node:fs/promises";
-import { createServer } from "node:http";
-import { extname, join, normalize } from "node:path";
-
-/** The repository root, which the server serves. */
-export const root = join(import.meta.dirname, "../../..");
-
-/** The page the server sends for a path with no extension, under any method. */
-export const shell = "/test/fixtures/router.html";
-
-/** The content type of each extension served; any other file is a 404. */
-const types = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css" };
+// The browser tier's own routes, the handler it passes to the tooling's serve: under /upload/, the
+// routes the upload's cases send to, and, over every request, a log of what the server was asked.
+// The rest, the repository's files and the shell page, the tooling's server sends.
+// Adapted from spike-html-apps-sdk (ca3089e): test/browser/support/server.js, its upload routes
+// and request log made a handler for @jaimestill/spike-html-apps-tooling/server.js.
 
 /** Writes `body` (an object as JSON, a string as it is) with `status` and, when given, `type`. */
 function send(response, status, type, body) {
@@ -90,35 +75,22 @@ async function upload(route, request, response) {
   }
 }
 
-/** Serves the root on a free loopback port, resolving to its origin, the requests it has answered
- * (as "METHOD pathname"), and a stop(). */
-export async function serve() {
+/**
+ * A handler for serve, and the log it keeps: `requests` holds every request the server is asked,
+ * as "METHOD pathname", in order. The handler claims each request under /upload/, resolving to
+ * true once its route has answered (or, for drop and hang, has left it unanswered), and returns
+ * false for any other, leaving its body and response to the server.
+ */
+export function routes() {
   const requests = [];
-  const server = createServer(async (request, response) => {
+  /** @type {import("@jaimestill/spike-html-apps-tooling/server.js").Handler} */
+  const handler = (request, response) => {
     const pathname = new URL(request.url, "http://localhost").pathname;
     requests.push(`${request.method} ${pathname}`);
-    if (pathname.startsWith("/upload/")) {
-      // A body the client stops sending (an abort, say) fails its read, and the response with it.
-      return upload(pathname.slice(8), request, response).catch(() => response.destroy());
-    }
-    const file = extname(pathname) === "" ? shell : pathname;
-    // normalize() of an absolute path never climbs above its root, so no request leaves the tree.
-    const path = join(root, normalize(decodeURIComponent(file)));
-    const type = types[extname(path)];
-    const body = type && (await readFile(path).catch(() => undefined));
-    if (body === undefined) {
-      response.writeHead(404).end();
-      return;
-    }
-    response.writeHead(200, { "content-type": type, "cache-control": "no-store" }).end(body);
-  });
-  await new Promise((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", resolve);
-  });
-  return {
-    origin: `http://127.0.0.1:${server.address().port}`,
-    requests,
-    stop: () => new Promise((resolve) => server.close(resolve)),
+    if (!pathname.startsWith("/upload/")) return false;
+    // A body the client stops sending (an abort, say) rejects its read, and serve destroys the
+    // response.
+    return upload(pathname.slice("/upload/".length), request, response).then(() => true);
   };
+  return { handler, requests };
 }

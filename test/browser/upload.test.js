@@ -1,20 +1,24 @@
 // The API client's upload from the package's dist/, on test/fixtures/upload.html, sending generated
-// bodies over XMLHttpRequest to the routes test/browser/support/server.js serves under /upload/:
+// bodies over XMLHttpRequest to the routes test/browser/support/upload.js handles under /upload/:
 // its progress, its Result's data and problems, its token and 401 retry, and its signal. Node has
 // no XMLHttpRequest, so these run here; test/unit/api.test.js covers its Result where there is none.
 
 import assert from "node:assert/strict";
+import { join } from "node:path";
 import { after, before, describe, test } from "node:test";
 
-import { launch } from "./support/browser-pipe.js";
-import { serve } from "./support/server.js";
+import { launch } from "@jaimestill/spike-html-apps-tooling/browser.js";
+import { serve } from "@jaimestill/spike-html-apps-tooling/server.js";
+
+import { routes } from "./support/upload.js";
 
 let server;
 let browser;
 let page;
 
 before(async () => {
-  server = await serve();
+  // The repository root, whose fixtures load the package's built dist/.
+  server = await serve({ root: join(import.meta.dirname, "../.."), handler: routes().handler });
   browser = await launch();
   page = await browser.open(`${server.origin}/test/fixtures/upload.html`);
 });

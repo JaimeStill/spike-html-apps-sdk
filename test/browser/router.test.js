@@ -3,17 +3,28 @@
 // ones it leaves to the browser, its params, query, notFound, and failing routes, and stop().
 
 import assert from "node:assert/strict";
+import { join } from "node:path";
 import { after, afterEach, before, describe, test } from "node:test";
 
-import { launch } from "./support/browser-pipe.js";
-import { serve } from "./support/server.js";
+import { launch } from "@jaimestill/spike-html-apps-tooling/browser.js";
+import { serve } from "@jaimestill/spike-html-apps-tooling/server.js";
 
+import { routes } from "./support/upload.js";
+
+/** The server's routes, whose log holds every request the server is asked. */
+const { handler, requests } = routes();
 let server;
 let browser;
 const pages = [];
 
 before(async () => {
-  server = await serve();
+  // The repository root, whose fixtures load the package's built dist/, and the router's page for
+  // every path with no extension, as an app's server sends its shell for each deep link.
+  server = await serve({
+    root: join(import.meta.dirname, "../.."),
+    shell: "/test/fixtures/router.html",
+    handler,
+  });
   browser = await launch();
 });
 afterEach(async () => {
@@ -344,7 +355,7 @@ describe("the navigations the router leaves to the browser", () => {
       await page.evaluate("location.pathname + ' ' + typeof router"),
       "/app/posted undefined",
     );
-    assert.ok(server.requests.includes("POST /app/posted"));
+    assert.ok(requests.includes("POST /app/posted"));
   });
 
   test("every navigation once stop() is called", async () => {
