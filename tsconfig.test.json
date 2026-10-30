@@ -9,9 +9,7 @@
     "moduleResolution": "nodenext",
     "types": ["node"],
     "noEmit": true,
-    "declaration": false,
-    "rootDir": ".",
-    "outDir": null
+    "rootDir": "."
   },
   "include": ["test/**/*.ts"]
 }

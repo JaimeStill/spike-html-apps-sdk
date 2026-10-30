@@ -54,7 +54,10 @@ run = "actionlint"
 
 [tasks.types]
 description = "Type-check the sources and the tests with tsc"
-depends = ["types:test"]
+depends = ["types:src", "types:test"]
+
+[tasks."types:src"]
+description = "Type-check the sources with tsc"
 run = "tsc --noEmit -p ."
 
 # The tests import the package by its name, which resolves to dist/'s declarations, so the build
