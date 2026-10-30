@@ -1,5 +1,5 @@
 // The NATS adapter as a consumer imports it, the package's ./events/nats.js export over the dist/
-// mise run build wrote, against a real nats-server (test/unit/nats-server.js) over WebSocket: the
+// mise run build wrote, against a real nats-server (test/unit/nats-server.ts) over WebSocket: the
 // sequence contract, its token and refresh, its decoding of go-messaging's binary content mode, a
 // server restart mid-read, and the package's other subpaths loading without the @nats-io packages.
 
@@ -11,13 +11,19 @@ import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { after, before, describe, test } from "node:test";
 
-import { headers, wsconnect } from "@nats-io/nats-core";
-import { jetstream, jetstreamManager } from "@nats-io/jetstream";
-import { anonymous } from "@jaimestill/spike-html-apps-sdk/auth.js";
+import { headers, wsconnect, type NatsConnection } from "@nats-io/nats-core";
+import {
+  jetstream,
+  jetstreamManager,
+  type JetStreamClient,
+  type JetStreamManager,
+} from "@nats-io/jetstream";
+import { anonymous, type TokenProvider } from "@jaimestill/spike-html-apps-sdk/auth.js";
+import type { CloudEvent } from "@jaimestill/spike-html-apps-sdk/events.js";
 import { natsSequence } from "@jaimestill/spike-html-apps-sdk/events/nats.js";
 
-import { startServer } from "./nats-server.js";
-import { cloudEvent, sequenceContract } from "./sequence-contract.js";
+import { startServer, type NatsServer } from "./nats-server.ts";
+import { cloudEvent, forged, sequenceContract } from "./sequence-contract.ts";
 
 const root = join(import.meta.dirname, "../..");
 const secret = "nats-tier-token";
@@ -26,10 +32,10 @@ const authorized = { token: async () => secret, refresh: async () => secret };
 /** The subjects every test's stream captures: each event type the tier publishes is under lab. */
 const subjects = ["lab.>"];
 
-let server;
-let publisher;
-let js;
-let jsm;
+let server: NatsServer;
+let publisher: NatsConnection;
+let js: JetStreamClient;
+let jsm: JetStreamManager;
 before(async () => {
   server = await startServer({ token: secret });
   publisher = await wsconnect({ servers: server.url, token: secret });
@@ -50,10 +56,20 @@ const encoder = new TextEncoder();
  * source's length in bytes, ":", the source, and the id, and the body the data's bytes: `body`
  * when given, else data JSON-encoded for a JSON type, a string's UTF-8, or a Uint8Array itself.
  * Resolves once the stream holds it. */
-async function publish(event, body) {
+async function publish(event: CloudEvent, body?: string | Uint8Array) {
   const h = headers();
-  for (const name of ["specversion", "id", "source", "type", "dataschema", "subject", "time"]) {
-    if (event[name] !== undefined) h.set(`ce-${name}`, event[name]);
+  const attributes = [
+    "specversion",
+    "id",
+    "source",
+    "type",
+    "dataschema",
+    "subject",
+    "time",
+  ] as const;
+  for (const name of attributes) {
+    const value = event[name];
+    if (value !== undefined) h.set(`ce-${name}`, value);
   }
   if (event.datacontenttype !== undefined) h.set("content-type", event.datacontenttype);
   for (const [name, value] of Object.entries(event.extensions ?? {})) h.set(`ce-${name}`, value);
@@ -70,7 +86,13 @@ async function publish(event, body) {
 let streams = 0;
 /** A fresh stream holding `events`, `keep` its max_msgs, and the sequence over it; close() closes
  * the sequence and deletes the stream, whose subjects the next test's stream takes. */
-async function fresh(events, { keep, token = authorized } = {}) {
+/** How a fresh stream is made: `keep`, its max_msgs, and the sequence's token provider. */
+interface FreshOptions {
+  keep?: number;
+  token?: TokenProvider;
+}
+
+async function fresh(events: CloudEvent[], { keep, token = authorized }: FreshOptions = {}) {
   const stream = `TIER${++streams}`;
   await jsm.streams.add({ name: stream, subjects, max_msgs: keep ?? -1 });
   for (const event of events) await publish(event);
@@ -78,7 +100,7 @@ async function fresh(events, { keep, token = authorized } = {}) {
   return {
     stream,
     sequence,
-    append: (event) => publish(event),
+    append: (event: CloudEvent) => publish(event),
     async close() {
       await sequence.close();
       await jsm.streams.delete(stream);
@@ -87,7 +109,11 @@ async function fresh(events, { keep, token = authorized } = {}) {
 }
 
 /** Runs `body` over a fresh stream, closing it afterwards. */
-async function using(events, options, body) {
+async function using(
+  events: CloudEvent[],
+  options: FreshOptions,
+  body: (made: Awaited<ReturnType<typeof fresh>>) => Promise<void>,
+) {
   const made = await fresh(events, options);
   try {
     await body(made);
@@ -97,8 +123,8 @@ async function using(events, options, body) {
 }
 
 /** The first `count` deliveries of `iterable`, the read then ended by a break. */
-async function take(iterable, count) {
-  const deliveries = [];
+async function take<T>(iterable: AsyncIterable<T>, count: number): Promise<T[]> {
+  const deliveries: T[] = [];
   for await (const delivery of iterable) {
     deliveries.push(delivery);
     if (deliveries.length === count) break;
@@ -114,14 +140,16 @@ describe("the NATS sequence's connection", { timeout: 15000 }, () => {
       const deliveries = sequence.read()[Symbol.asyncIterator]();
       try {
         await deliveries.next();
-        const connz = await (await fetch(`${server.monitor}/connz`)).json();
+        const connz: { connections: { type: string }[] } = await (
+          await fetch(`${server.monitor}/connz`)
+        ).json();
         // The publisher's and the adapter's.
         assert.deepEqual(
           connz.connections.map(({ type }) => type),
           ["websocket", "websocket"],
         );
       } finally {
-        await deliveries.return();
+        await deliveries.return?.();
       }
     }));
 
@@ -146,7 +174,7 @@ describe("the NATS sequence's connection", { timeout: 15000 }, () => {
     }));
 
   test("a refused token is refreshed once, and the read goes on with the new one", async () => {
-    const calls = [];
+    const calls: string[] = [];
     const token = {
       token: async () => (calls.push("token"), "stale"),
       refresh: async () => (calls.push("refresh"), secret),
@@ -180,7 +208,7 @@ describe("the NATS sequence's connection", { timeout: 15000 }, () => {
   test("a cursor that isn't a positive decimal integer fails the read", () =>
     using([cloudEvent(1)], {}, async ({ sequence }) => {
       for (const after of ["0", "01", "-1", "1.5", "1e3", " 1", "9007199254740993"]) {
-        await assert.rejects(take(sequence.read({ after }), 1), {
+        await assert.rejects(take(sequence.read({ after: forged(after) }), 1), {
           message: `the NATS sequence gave out no cursor ${JSON.stringify(after)}`,
         });
       }
@@ -192,18 +220,18 @@ describe("the NATS sequence's connection", { timeout: 15000 }, () => {
       {},
       async ({ sequence, append }) => {
         for (const after of ["4", "1000"]) {
-          await assert.rejects(take(sequence.read({ after }), 1), {
+          await assert.rejects(take(sequence.read({ after: forged(after) }), 1), {
             message: `the NATS sequence gave out no cursor ${JSON.stringify(after)}`,
           });
         }
-        const deliveries = sequence.read({ after: "3" })[Symbol.asyncIterator]();
+        const deliveries = sequence.read({ after: forged("3") })[Symbol.asyncIterator]();
         try {
           const next = deliveries.next();
           await delay(50);
           await append(cloudEvent(4));
           assert.deepEqual((await next).value, { event: cloudEvent(4), cursor: "4" });
         } finally {
-          await deliveries.return();
+          await deliveries.return?.();
         }
       },
     ));
@@ -223,9 +251,10 @@ describe("the NATS sequence's connection", { timeout: 15000 }, () => {
 });
 
 describe("the NATS sequence's decoding", { timeout: 15000 }, () => {
-  const base = { specversion: "1.0", source: "/test/decoding", type: "lab.test.decoded" };
+  const base = { specversion: "1.0", source: "/test/decoding", type: "lab.test.decoded" } as const;
   const bytes = new Uint8Array([0, 1, 2, 254, 255]);
-  const cases = [
+  // Each case: its name, and the attributes and data its event carries beside base's.
+  const cases: [string, Partial<CloudEvent>][] = [
     ["JSON", { datacontenttype: "application/json", data: { a: [1, "two", null] } }],
     ["+json", { datacontenttype: "application/vnd.lab.result+json", data: { ok: true } }],
     ["JSON with parameters", { datacontenttype: "Application/JSON; charset=utf-8", data: [1] }],
@@ -249,7 +278,11 @@ describe("the NATS sequence's decoding", { timeout: 15000 }, () => {
       },
     ],
   ];
-  const events = cases.map(([, fields], n) => ({ ...base, id: `decoded-${n}`, ...fields }));
+  const events: CloudEvent[] = cases.map(([, fields], n) => ({
+    ...base,
+    id: `decoded-${n}`,
+    ...fields,
+  }));
 
   test("each content type decodes as go-messaging encoded it", () =>
     using(events, {}, async ({ sequence }) => {
@@ -288,7 +321,7 @@ describe("the NATS sequence's decoding", { timeout: 15000 }, () => {
       await publish(good);
       await publish({ ...base, id: "broken", datacontenttype: "application/json" }, "{not json");
       await publish({ ...good, id: "after" });
-      const seen = [];
+      const seen: string[] = [];
       await assert.rejects(
         (async () => {
           for await (const { event } of sequence.read()) seen.push(event.id);
@@ -324,7 +357,7 @@ describe("the NATS sequence across a server restart", { timeout: 30000 }, () => 
       async ({ sequence, append }) => {
         const deliveries = sequence.read()[Symbol.asyncIterator]();
         try {
-          const seen = [];
+          const seen: CloudEvent[] = [];
           for (let n = 0; n < 2; n++) seen.push((await deliveries.next()).value.event);
           // The publisher reconnects as the adapter does (nats-core's default, every 2 s); it
           // appends once it has.
@@ -340,7 +373,7 @@ describe("the NATS sequence across a server restart", { timeout: 30000 }, () => 
             [1, 2, 3, 4].map((n) => cloudEvent(n)),
           );
         } finally {
-          await deliveries.return();
+          await deliveries.return?.();
         }
       },
     ));
@@ -356,7 +389,9 @@ describe("the optional peer dependencies", () => {
       mkdirSync(pkg, { recursive: true });
       cpSync(join(root, "package.json"), join(pkg, "package.json"));
       cpSync(join(root, "dist"), join(pkg, "dist"), { recursive: true });
-      const { exports } = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+      const { exports } = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as {
+        exports: Record<string, unknown>;
+      };
       const subpaths = Object.keys(exports).map(
         (subpath) => `@jaimestill/spike-html-apps-sdk${subpath.slice(1)}`,
       );

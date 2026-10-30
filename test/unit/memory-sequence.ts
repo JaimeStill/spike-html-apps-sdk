@@ -1,6 +1,6 @@
 // An in-memory EventSequence, the contract's reference implementation: events appended to an array,
 // each read a generator over it that waits for the next append. It is test code, never exported by
-// the package: test/unit/events.test.js runs the sequence contract against it, and type-checks it
+// the package: test/unit/events.test.ts runs the sequence contract against it, and type-checks it
 // with tsc.
 
 import type {

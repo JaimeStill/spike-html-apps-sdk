@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-# Prints `<where>: <item> <pin> -> <latest>` for each mise tool, package.json dependency, and GitHub
-# Actions pin behind its latest, and exits 1 if any; prints nothing when all are current. Reads the
-# network.
-# From spike-html-packages-sdk (9d10ca6): scripts/currency.sh.
+# Prints `<where>: <item> <pin> -> <latest>` for each mise tool, package.json dependency, GitHub
+# Actions pin, and github: devDependency's tag behind its latest, and exits 1 if any; prints
+# nothing when all are current. Reads the network.
+# Adapted from spike-html-packages-sdk (9d10ca6): scripts/currency.sh, with a github: branch.
+# Adapted from spike-html-apps-components (2fded6d): scripts/currency.sh, its github: branch
+# without the peer range check.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -22,6 +24,16 @@ pins=$(node -p '
 ')
 typescript_eslint=$(node -p 'require("./package.json").devDependencies["typescript-eslint"]')
 while read -r package pin; do
+  # A github: devDependency (the tooling) is pinned to its repository's release tag, which the
+  # registry doesn't hold: its tag against that repository's latest release.
+  if [[ $pin == github:* ]]; then
+    spec=${pin#github:}
+    latest=$(gh api "repos/${spec%%#*}/releases/latest" --jq .tag_name)
+    if [[ ${spec#*#} != "$latest" ]]; then
+      trailing+=$'\n'"package.json: $package ${spec#*#} -> $latest"
+    fi
+    continue
+  fi
   latest=$(pnpm view "$package" version)
   # typescript is held to the newest version typescript-eslint's peer range accepts.
   if [[ $package == typescript ]]; then

@@ -1,9 +1,9 @@
 // The release's integrity: a pnpm pack of the build, extracted, against package.json's files and
-// exports and against its license, by release.js's releaseProblems, as it stands and in scratch
+// exports and against its license, by release.ts's releaseProblems, as it stands and in scratch
 // copies with one fault each; and the pack's public subpaths, resolved through the package's own
 // name, with its internal module refused. It packs the dist/ that mise run build writes.
-// The pack's runtime files are held to the layer's brotli budget by budget.js's budgetProblems.
-// Adapted from spike-html-packages-sdk (9d10ca6): test/unit/release.test.js.
+// The pack's runtime files are held to the layer's brotli budget by budget.ts's budgetProblems.
+// Adapted from spike-html-packages-sdk (9d10ca6): test/unit/release.test.js, in TypeScript.
 
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -11,12 +11,12 @@ import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:f
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, describe, test } from "node:test";
-import { brotliBytes, budgetProblems, runtimeFiles } from "./budget.js";
-import { listFiles, releaseProblems, resolveSelf } from "./release.js";
+import { brotliBytes, budgetProblems, runtimeFiles } from "./budget.ts";
+import { listFiles, releaseProblems, resolveSelf } from "./release.ts";
 
 const root = join(import.meta.dirname, "../..");
 const src = join(root, "src");
-const scratches = [];
+const scratches: string[] = [];
 
 // The layer's budget in brotli bytes, a KB being 1,000 bytes: its baseline on 2026-10-29, 11,669 B
 // over 7 runtime files, plus 10%, rounded up to a whole KB. A layer over it fails the check;
@@ -35,7 +35,7 @@ const publics = [
 ];
 // Node's condition sets, its defaults and the types condition TypeScript adds, with the build file
 // a public subpath's base resolves to under each.
-const conditions = [
+const conditions: [string[], string][] = [
   [[], ".js"],
   [["--conditions=types"], ".d.ts"],
 ];
@@ -48,7 +48,7 @@ function scratchDir() {
 }
 
 // The pack under test: pnpm pack's tarball, extracted, its package/ directory.
-let pack;
+let pack: string;
 before(() => {
   const scratch = scratchDir();
   execFileSync("pnpm", ["pack", "--pack-destination", scratch], { cwd: root, stdio: "ignore" });
@@ -60,17 +60,31 @@ after(() => {
   for (const scratch of scratches) rmSync(scratch, { recursive: true, force: true });
 });
 
+/** The pack's manifest as package.json writes it, which a fault changes: every export a flat
+ * object of condition targets. */
+interface PackManifest {
+  license: string;
+  files: string[];
+  exports: Record<string, Record<string, string>>;
+}
+
+/** A fault's change to a scratch copy of the pack, given its directory and its manifest. */
+type Change = (dir: string, manifest: PackManifest) => void;
+
 /** A scratch copy of the pack, `change` applied to it and its manifest, and its problems. */
-function faulted(change) {
+function faulted(change: Change) {
   const copy = join(scratchDir(), "package");
   cpSync(pack, copy, { recursive: true });
-  const manifest = JSON.parse(readFileSync(join(copy, "package.json"), "utf8"));
+  const manifest = JSON.parse(readFileSync(join(copy, "package.json"), "utf8")) as PackManifest;
   change(copy, manifest);
   writeFileSync(join(copy, "package.json"), JSON.stringify(manifest));
   return releaseProblems(copy, src, publics);
 }
 
-const remove = (path) => (dir) => rmSync(join(dir, path));
+const remove =
+  (path: string): Change =>
+  (dir) =>
+    rmSync(join(dir, path));
 
 describe("release pack", () => {
   test("the pack is package.json, README.md, LICENSE, and the build", () => {
@@ -102,7 +116,8 @@ describe("release pack", () => {
     }
   });
 
-  const faults = {
+  // Each fault: its change, and a problem it must draw.
+  const faults: Record<string, [Change, string]> = {
     "a .ts module with no emitted .js": [
       remove("dist/auth.js"),
       "src/auth.ts has no built dist/auth.js",

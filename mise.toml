@@ -10,19 +10,19 @@ node = "26.13.0"
 pnpm = "12.16.1"
 shellcheck = "0.11.0"
 "github:microsoft/typescript-go" = { version = "7.0.2", version_prefix = "typescript/v", bin_path = "package/lib" }
-# The NATS adapter's server, which test/unit/nats.test.js starts per suite on the loopback address.
+# The NATS adapter's server, which test/unit/nats.test.ts starts per suite on the loopback address.
 # mise's registry maps nats-server to github:nats-io/nats-server.
 nats-server = "2.15.2"
 
 # The browser tier's browser. Chrome for Testing publishes no checksums: take the sha256 and size
 # from the download by hand at each bump.
 [tools."http:chrome-headless-shell"]
-version = "156.0.8078.73"
+version = "156.0.8078.80"
 version_list_url = "https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions.json"
 version_json_path = ".channels.Stable.version"
 
 [tools."http:chrome-headless-shell".platforms]
-linux-x64 = { url = "https://storage.googleapis.com/chrome-for-testing-public/{{ version }}/linux64/chrome-headless-shell-linux64.zip", checksum = "sha256:77eb8d52798efc7a857ab61abcc62a456d8ea9635b02341d06dffee2761768c8", size = "126938225" }
+linux-x64 = { url = "https://storage.googleapis.com/chrome-for-testing-public/{{ version }}/linux64/chrome-headless-shell-linux64.zip", checksum = "sha256:547dcd374e02961bf998f6046a267644f8502225c36bb78ca307dab32a0b3eb4", size = "126922702" }
 
 [tasks.preflight]
 description = "Fail naming mise run install when a tool the tasks need is missing"
@@ -53,8 +53,19 @@ description = "Lint the GitHub Actions workflows with actionlint"
 run = "actionlint"
 
 [tasks.types]
+description = "Type-check the sources and the tests with tsc"
+depends = ["types:src", "types:test"]
+
+[tasks."types:src"]
 description = "Type-check the sources with tsc"
 run = "tsc --noEmit -p ."
+
+# The tests import the package by its name, which resolves to dist/'s declarations, so the build
+# comes first.
+[tasks."types:test"]
+description = "Type-check the tests with tsc, over the build"
+depends = ["build"]
+run = "tsc -p tsconfig.test.json"
 
 [tasks.build]
 description = "Build src/ into dist/: tsc's emit, with any handwritten .d.ts beside it"
@@ -63,12 +74,12 @@ run = "scripts/build.sh"
 [tasks."test:unit"]
 description = "Run the unit tier on the sources, the lint, a pack of the build, and the NATS adapter in the pinned nats-server"
 depends = ["preflight nats", "build"]
-run = "NATS_SERVER=$(mise which nats-server) node --test 'test/unit/*.test.js'"
+run = "NATS_SERVER=$(mise which nats-server) node --test 'test/unit/*.test.ts'"
 
 [tasks."test:browser"]
 description = "Run the browser tier on dist/ in the pinned chrome-headless-shell"
 depends = ["preflight browser", "build"]
-run = "BROWSER_EXECUTABLE=$(mise which chrome-headless-shell) node --test 'test/browser/*.test.js'"
+run = "BROWSER_EXECUTABLE=$(mise which chrome-headless-shell) node --test 'test/browser/*.test.ts'"
 
 [tasks.check]
 description = "Run every check; reads no network; writes dist/"

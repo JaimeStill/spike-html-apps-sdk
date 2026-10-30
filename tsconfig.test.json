@@ -1,0 +1,15 @@
+// The tests' type-check, mise run types:test: test/'s TypeScript, which node --test runs under
+// Node's type stripping, so erasableSyntaxOnly holds it to syntax the stripping erases. It checks
+// and never emits. The tests import the package by its name, which resolves by self-reference to
+// the dist/ mise run build wrote, as Node resolves it: nodenext, with Node's own types.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "types": ["node"],
+    "noEmit": true,
+    "rootDir": "."
+  },
+  "include": ["test/**/*.ts"]
+}

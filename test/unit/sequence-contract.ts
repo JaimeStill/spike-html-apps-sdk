@@ -1,11 +1,13 @@
 // The EventSequence contract as a suite any implementation runs: src/events.ts's semantics, each a
-// test against a sequence a factory makes. test/unit/events.test.js runs it against the in-memory
+// test against a sequence a factory makes. test/unit/events.test.ts runs it against the in-memory
 // sequence; an adapter's suite runs it against the adapter, over a live server. Every test has a
 // timeout, so a read that hangs, never delivering or never ending, fails rather than stalls.
 
 import assert from "node:assert/strict";
 import { setTimeout as delay } from "node:timers/promises";
 import { describe, test } from "node:test";
+
+import type { CloudEvent, Cursor, EventSequence } from "@jaimestill/spike-html-apps-sdk/events.js";
 
 /** How long a test may run before it fails as a hang. */
 const timeout = 5000;
@@ -14,7 +16,7 @@ const settle = 50;
 
 /** A CloudEvent numbered `n`, of `type`. Every event carries data and an extension attribute, so a
  * sequence that round-trips them through a wire format is held to giving them back as appended. */
-export function cloudEvent(n, type = "lab.test.created") {
+export function cloudEvent(n: number, type = "lab.test.created"): CloudEvent<{ n: number }> {
   return {
     specversion: "1.0",
     id: `event-${n}`,
@@ -28,9 +30,13 @@ export function cloudEvent(n, type = "lab.test.created") {
   };
 }
 
+/** `text` passed as a cursor, as an app that builds one would. The brand refuses a string under
+ * tsc, so a case that hands a sequence a cursor it never gave out forges one here. */
+export const forged = (text: string) => text as Cursor;
+
 /** The first `count` deliveries of `iterable`, the read then ended by a break. */
-async function take(iterable, count) {
-  const deliveries = [];
+async function take<T>(iterable: AsyncIterable<T>, count: number): Promise<T[]> {
+  const deliveries: T[] = [];
   for await (const delivery of iterable) {
     deliveries.push(delivery);
     if (deliveries.length === count) break;
@@ -39,7 +45,24 @@ async function take(iterable, count) {
 }
 
 /** The events of `deliveries`. */
-const eventsOf = (deliveries) => deliveries.map(({ event }) => event);
+const eventsOf = (deliveries: readonly { event: CloudEvent }[]) =>
+  deliveries.map(({ event }) => event);
+
+/** How a sequence the contract makes is made: `keep`, when given, the most events it keeps. */
+export interface ContractOptions {
+  keep?: number;
+}
+
+/** A sequence the contract reads, the append that adds an event to it, and, when given, the close
+ * that frees it. */
+export interface Made {
+  sequence: EventSequence;
+  append(event: CloudEvent): Promise<void>;
+  close?(): Promise<void>;
+}
+
+/** Makes a fresh sequence holding `events`, appended in order. */
+export type Factory = (events: CloudEvent[], options: ContractOptions) => Made | Promise<Made>;
 
 /**
  * Registers the contract's tests under `name`. `factory(events, options)` makes a fresh sequence
@@ -48,9 +71,13 @@ const eventsOf = (deliveries) => deliveries.map(({ event }) => event);
  * sequence after its test. `options.keep`, when given, is the most events the sequence keeps, the
  * oldest discarded past it.
  */
-export function sequenceContract(name, factory) {
+export function sequenceContract(name: string, factory: Factory): void {
   /** Runs `body` over a fresh sequence, closing it afterwards whether `body` passes or not. */
-  async function using(events, options, body) {
+  async function using(
+    events: CloudEvent[],
+    options: ContractOptions,
+    body: (made: Made) => Promise<void>,
+  ) {
     const made = await factory(events, options);
     try {
       await body(made);
@@ -148,7 +175,7 @@ export function sequenceContract(name, factory) {
 
     test("a signal already aborted delivers nothing", () =>
       using([cloudEvent(1)], {}, async ({ sequence }) => {
-        const deliveries = [];
+        const deliveries: unknown[] = [];
         for await (const delivery of sequence.read({ signal: AbortSignal.abort() })) {
           deliveries.push(delivery);
         }
@@ -161,7 +188,7 @@ export function sequenceContract(name, factory) {
         {},
         async ({ sequence, append }) => {
           const iterable = sequence.read();
-          const seen = [];
+          const seen: CloudEvent[] = [];
           for await (const { event } of iterable) {
             seen.push(event);
             break;
@@ -196,13 +223,13 @@ export function sequenceContract(name, factory) {
 
     test("a cursor the sequence never gave out fails the read", () =>
       using([cloudEvent(1)], {}, async ({ sequence }) => {
-        await assert.rejects(take(sequence.read({ after: "not a cursor" }), 1), Error);
+        await assert.rejects(take(sequence.read({ after: forged("not a cursor") }), 1), Error);
       }));
 
     test("a cursor past the last event fails the read, and one at it waits for the next", async () => {
       // A cursor well-formed for the sequence, from another holding more events: the third event's,
       // which a sequence of one never gave out.
-      let past;
+      let past: Cursor | undefined;
       await using(
         [1, 2, 3].map((n) => cloudEvent(n)),
         {},

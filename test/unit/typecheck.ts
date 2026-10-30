@@ -14,7 +14,7 @@ const root = join(import.meta.dirname, "../..");
  * scratch directory) compiled with `sources` (paths under the repository root). A consumer doesn't
  * import .ts specifiers, so allowImportingTsExtensions is off: the emitted declarations' own .ts
  * specifiers must resolve without it. */
-export function typecheck(files, sources = []) {
+export function typecheck(files: Record<string, string>, sources: string[] = []): string[] {
   const scratch = mkdtempSync(join(tmpdir(), "typecheck-"));
   try {
     for (const [name, source] of Object.entries(files)) {
