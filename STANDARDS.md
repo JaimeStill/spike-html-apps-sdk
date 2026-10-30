@@ -37,5 +37,7 @@ The architecture pages that apply, in the architecture repository:
   `From|Adapted from <repo> (<commit>): <path>`. It names the immediate source alone; that source
   keeps the earlier lines.
 - Sources use `.ts` relative specifiers, which tsc rewrites; handwritten `.d.ts` keep `.js`.
+- Tests are TypeScript run under Node's type stripping, erasable syntax only, type-checked by
+  tsconfig.test.json; browser-served fixtures stay .js.
 - The browser tier tests `dist/`, and no server transforms what it serves.
 - A mise task runs one script or one command, and `check` is a depends list.

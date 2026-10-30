@@ -1,5 +1,5 @@
 // The lint the check runs: the recommended rules and the layer's imports in src/.
-// test/unit/layers.test.js runs it over test/unit/layers-tree.js.
+// test/unit/layers.test.ts runs it over test/unit/layers-tree.ts.
 // Adapted from spike-html-packages-sdk (9d10ca6): eslint.config.js.
 
 import js from "@eslint/js";
@@ -77,8 +77,9 @@ export default defineConfig([
   { ignores: ["dist/"] },
   { files: code, extends: [js.configs.recommended, tseslint.configs.recommended] },
   { files: code, languageOptions: { globals: globals.browser } },
-  // The suite and the scripts run on node.
-  { files: ["test/**/*.js", "scripts/**"], languageOptions: { globals: globals.node } },
+  // The suite and the scripts run on node; the fixtures a test page loads, test/'s .js, run in the
+  // browser.
+  { files: ["test/**/*.ts", "scripts/**"], languageOptions: { globals: globals.node } },
   {
     files: ["src/**"],
     plugins: { boundaries, "import-x": importX },

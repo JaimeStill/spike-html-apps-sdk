@@ -1,7 +1,7 @@
 // The modules' emitted declarations against v0.1.0's handwritten ones, both printed by tsc, but for
 // the differences listed here, and tsc, under tsconfig.json, refusing runtime code in a declaration
 // file, run against scratch trees.
-// Adapted from spike-html-packages-sdk (9d10ca6): test/unit/declarations.test.js.
+// Adapted from spike-html-packages-sdk (9d10ca6): test/unit/declarations.test.js, in TypeScript.
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
@@ -17,7 +17,7 @@ import {
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { describe, test } from "node:test";
-import { listFiles } from "./release.js";
+import { listFiles } from "./release.ts";
 
 const root = join(import.meta.dirname, "../..");
 const fixtures = join(root, "test/fixtures/v0.1.0");
@@ -419,7 +419,7 @@ export interface UploadOptions extends RequestOptions {
 
 /** The printed fixtures with every difference applied, as { "x.d.ts": text }, and the modules the
  * differences add; fails on an entry that doesn't apply. */
-function expected(fixturesPrinted) {
+function expected(fixturesPrinted: Record<string, string>) {
   const texts = { ...fixturesPrinted };
   const added = [];
   for (const { file, from, to, reason } of differences) {
@@ -438,7 +438,7 @@ function expected(fixturesPrinted) {
 }
 
 /** Each "path code" tsc reports, sorted, for `files` (paths under layers/ to sources) in scratch. */
-function check(files) {
+function check(files: Record<string, string>): string[] {
   const scratch = mkdtempSync(join(tmpdir(), "declarations-"));
   try {
     for (const [path, source] of Object.entries(files)) {

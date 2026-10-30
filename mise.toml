@@ -10,7 +10,7 @@ node = "26.13.0"
 pnpm = "12.16.1"
 shellcheck = "0.11.0"
 "github:microsoft/typescript-go" = { version = "7.0.2", version_prefix = "typescript/v", bin_path = "package/lib" }
-# The NATS adapter's server, which test/unit/nats.test.js starts per suite on the loopback address.
+# The NATS adapter's server, which test/unit/nats.test.ts starts per suite on the loopback address.
 # mise's registry maps nats-server to github:nats-io/nats-server.
 nats-server = "2.15.2"
 
@@ -53,8 +53,16 @@ description = "Lint the GitHub Actions workflows with actionlint"
 run = "actionlint"
 
 [tasks.types]
-description = "Type-check the sources with tsc"
+description = "Type-check the sources and the tests with tsc"
+depends = ["types:test"]
 run = "tsc --noEmit -p ."
+
+# The tests import the package by its name, which resolves to dist/'s declarations, so the build
+# comes first.
+[tasks."types:test"]
+description = "Type-check the tests with tsc, over the build"
+depends = ["build"]
+run = "tsc -p tsconfig.test.json"
 
 [tasks.build]
 description = "Build src/ into dist/: tsc's emit, with any handwritten .d.ts beside it"
@@ -63,12 +71,12 @@ run = "scripts/build.sh"
 [tasks."test:unit"]
 description = "Run the unit tier on the sources, the lint, a pack of the build, and the NATS adapter in the pinned nats-server"
 depends = ["preflight nats", "build"]
-run = "NATS_SERVER=$(mise which nats-server) node --test 'test/unit/*.test.js'"
+run = "NATS_SERVER=$(mise which nats-server) node --test 'test/unit/*.test.ts'"
 
 [tasks."test:browser"]
 description = "Run the browser tier on dist/ in the pinned chrome-headless-shell"
 depends = ["preflight browser", "build"]
-run = "BROWSER_EXECUTABLE=$(mise which chrome-headless-shell) node --test 'test/browser/*.test.js'"
+run = "BROWSER_EXECUTABLE=$(mise which chrome-headless-shell) node --test 'test/browser/*.test.ts'"
 
 [tasks.check]
 description = "Run every check; reads no network; writes dist/"

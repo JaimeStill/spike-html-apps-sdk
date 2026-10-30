@@ -6,15 +6,16 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
 import { memorySequence } from "./memory-sequence.ts";
-import { cloudEvent, sequenceContract } from "./sequence-contract.js";
-import { typecheck } from "./typecheck.js";
+import { cloudEvent, forged, sequenceContract } from "./sequence-contract.ts";
+import { typecheck } from "./typecheck.ts";
 
 sequenceContract("the in-memory sequence", (events, options) => memorySequence(events, options));
 
 describe("the in-memory sequence's cursors", () => {
   test("a cursor past the last event appended fails the read", async () => {
     const { sequence } = memorySequence([cloudEvent(1)]);
-    await assert.rejects(sequence.read({ after: "2" })[Symbol.asyncIterator]().next(), {
+    const after = forged("2");
+    await assert.rejects(sequence.read({ after })[Symbol.asyncIterator]().next(), {
       message: 'the sequence gave out no cursor "2"',
     });
   });

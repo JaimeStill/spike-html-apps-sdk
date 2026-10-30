@@ -2,18 +2,27 @@
 // routes the upload's cases send to, and, over every request, a log of what the server was asked.
 // The rest, the repository's files and the shell page, the tooling's server sends.
 // Adapted from spike-html-apps-sdk (ca3089e): test/browser/support/server.js, its upload routes
-// and request log made a handler for @jaimestill/spike-html-apps-tooling/server.js.
+// and request log made a handler for @jaimestill/spike-html-apps-tooling/server.js, in TypeScript.
+
+import type { IncomingMessage, ServerResponse } from "node:http";
+
+import type { Handler } from "@jaimestill/spike-html-apps-tooling/server.js";
 
 /** Writes `body` (an object as JSON, a string as it is) with `status` and, when given, `type`. */
-function send(response, status, type, body) {
+function send(
+  response: ServerResponse,
+  status: number,
+  type: string | undefined,
+  body: object | string,
+) {
   const text = typeof body === "string" ? body : JSON.stringify(body);
   response.writeHead(status, type ? { "content-type": type } : {}).end(text);
 }
 
 /** The request's body, read whole, a pause of 5 ms after each chunk, so a body of a few MB arrives
  * over long enough for the browser to report its upload's progress several times. */
-async function slowly(request) {
-  const chunks = [];
+async function slowly(request: IncomingMessage) {
+  const chunks: Buffer[] = [];
   for await (const chunk of request) {
     chunks.push(chunk);
     await new Promise((resolve) => setTimeout(resolve, 5));
@@ -23,7 +32,7 @@ async function slowly(request) {
 
 /** The upload routes, by the path under /upload/: each reads the body whole before it answers, but
  * drop, which destroys the socket after the body's first chunk, and hang, which never answers. */
-async function upload(route, request, response) {
+async function upload(route: string, request: IncomingMessage, response: ServerResponse) {
   if (route === "drop") {
     request.once("data", () => request.socket.destroy());
     return;
@@ -82,10 +91,9 @@ async function upload(route, request, response) {
  * false for any other, leaving its body and response to the server.
  */
 export function routes() {
-  const requests = [];
-  /** @type {import("@jaimestill/spike-html-apps-tooling/server.js").Handler} */
-  const handler = (request, response) => {
-    const pathname = new URL(request.url, "http://localhost").pathname;
+  const requests: string[] = [];
+  const handler: Handler = (request, response) => {
+    const pathname = new URL(request.url ?? "/", "http://localhost").pathname;
     requests.push(`${request.method} ${pathname}`);
     if (!pathname.startsWith("/upload/")) return false;
     // A body the client stops sending (an abort, say) rejects its read, and serve destroys the

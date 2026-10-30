@@ -1,5 +1,5 @@
 // The upload page's app: upload() makes a client under /upload/, uploads a generated body to a
-// route of test/browser/support/upload.js, and reports the Result and every progress call, in a
+// route of test/browser/support/upload.ts, and reports the Result and every progress call, in a
 // form the DevTools Protocol returns by value.
 
 import { createClient } from "@jaimestill/spike-html-apps-sdk/api.js";

@@ -1,6 +1,6 @@
-// The layer's import rules: eslint.config.js run over test/unit/layers-tree.js's tree, passing only
+// The layer's import rules: eslint.config.js run over test/unit/layers-tree.ts's tree, passing only
 // when ESLint flags exactly the files that break a rule, each with exactly the rules its case names.
-// From spike-html-packages-sdk (9d10ca6): test/unit/layers.test.js.
+// Adapted from spike-html-packages-sdk (9d10ca6): test/unit/layers.test.js, in TypeScript.
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
@@ -8,7 +8,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, describe, test } from "node:test";
-import { allowed, lint, manifest, sources, violations, watched, writeTree } from "./layers-tree.js";
+import { allowed, lint, manifest, sources, violations, watched, writeTree } from "./layers-tree.ts";
 
 const root = join(import.meta.dirname, "../..");
 
@@ -21,8 +21,8 @@ describe("layer imports", () => {
 
   // One tree, so each case is judged beside the others, as the package's files are.
   const files = { ...sources(violations), ...allowed };
-  let scratch;
-  let found;
+  let scratch: string;
+  let found: Record<string, string[]>;
   before(() => {
     scratch = mkdtempSync(join(tmpdir(), "layers-"));
     const code = writeTree(scratch, files);
@@ -40,8 +40,8 @@ describe("layer imports", () => {
     );
     found = {};
     for (const file of report) {
-      const rules = [...new Set(file.messages.map((m) => m.ruleId))].filter((id) =>
-        watched.includes(id),
+      const rules = [...new Set(file.messages.map((m) => m.ruleId))].filter(
+        (id): id is string => id !== null && watched.includes(id),
       );
       if (rules.length > 0) found[file.filePath.slice(scratch.length + 1)] = rules.sort();
     }

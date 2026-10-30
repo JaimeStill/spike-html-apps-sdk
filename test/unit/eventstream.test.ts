@@ -11,7 +11,7 @@ import { EventStreamParser } from "../../dist/eventstream.js";
 const encoder = new TextEncoder();
 
 /** The events a fresh parser dispatches over `chunks` (strings encoded, or bytes), and the parser. */
-function parse(...chunks) {
+function parse(...chunks: (string | Uint8Array)[]) {
   const parser = new EventStreamParser();
   const events = [];
   for (const chunk of chunks) {
