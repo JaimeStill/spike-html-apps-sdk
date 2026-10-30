@@ -2,8 +2,9 @@
 # Prints `<where>: <item> <pin> -> <latest>` for each mise tool, package.json dependency, GitHub
 # Actions pin, and github: devDependency's tag behind its latest, and exits 1 if any; prints
 # nothing when all are current. Reads the network.
-# From spike-html-packages-sdk (9d10ca6): scripts/currency.sh; its github: branch from
-# spike-html-apps-components (2fded6d): scripts/currency.sh, without the peer range's check.
+# Adapted from spike-html-packages-sdk (9d10ca6): scripts/currency.sh, with a github: branch.
+# Adapted from spike-html-apps-components (2fded6d): scripts/currency.sh, its github: branch
+# without the peer range check.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
