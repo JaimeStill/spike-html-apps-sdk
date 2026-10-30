@@ -46,7 +46,7 @@
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
-    "@jaimestill/spike-html-apps-tooling": "github:JaimeStill/spike-html-apps-tooling#v0.1.0",
+    "@jaimestill/spike-html-apps-tooling": "github:JaimeStill/spike-html-apps-tooling#v0.2.0",
     "@nats-io/jetstream": "3.4.0",
     "@nats-io/nats-core": "3.4.0",
     "@types/node": "26.6.6",
