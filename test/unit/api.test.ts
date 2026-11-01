@@ -81,6 +81,10 @@ function ticks(req: IncomingMessage, body: string) {
   ];
 }
 
+/** A JSON document as it was stored: its whitespace, and integer-like keys after the others, which
+ * JSON.parse would move first. */
+const stored = '{ "title": "x",\n  "2": [1,  2],\n  "1": null }\n';
+
 const docs = [
   { id: 1, title: "one" },
   { id: 2, title: "two" },
@@ -150,6 +154,12 @@ function handle(req: IncomingMessage, res: ServerResponse, state: State) {
       return send(res, 200, "application/json", "");
     case "/malformed":
       return send(res, 200, "application/json", "{");
+    case "/stored":
+      return send(res, 200, "application/json", stored);
+    case "/markdown":
+      return send(res, 200, "text/markdown; charset=utf-8", "# Notes\n\n- one\n");
+    case "/crash":
+      return send(res, 500, "text/plain", "boom", "Internal Server Error");
     case "/problem":
       return send(res, 422, "application/problem+json", {
         type: "urn:lab:invalid",
@@ -329,6 +339,86 @@ describe("a success's data, decoded by content type", () => {
     assert.equal(result.problem.type, "urn:standards-lab:problem:decode");
     assert.equal(result.problem.status, 200);
     assert.equal(result.problem.title, "Response not decodable");
+  });
+});
+
+describe('a success\'s body read as text, { as: "text" }', () => {
+  test("a JSON body is its exact text, whitespace and key order kept", async () => {
+    assert.deepEqual(await client.get("stored", { as: "text" }), { ok: true, data: stored });
+  });
+
+  test("a JSON body that doesn't parse is its text, not the decode problem", async () => {
+    assert.deepEqual(await client.get("malformed", { as: "text" }), { ok: true, data: "{" });
+  });
+
+  test("a text/markdown body is its text", async () => {
+    const result = await client.get("markdown", { as: "text" });
+    assert.deepEqual(result, { ok: true, data: "# Notes\n\n- one\n" });
+  });
+
+  test("a body of any other type is its text, not a Blob", async () => {
+    const result = await client.get("bytes", { as: "text" });
+    assert.deepEqual(result, { ok: true, data: "\x01\x02\x03" });
+  });
+
+  for (const path of ["no-content", "empty"]) {
+    test(`no body (${path}) is the empty string`, async () => {
+      assert.deepEqual(await client.get(path, { as: "text" }), { ok: true, data: "" });
+    });
+  }
+
+  test("each verb with a body reads it as text too", async () => {
+    for (const verb of ["post", "put", "patch"] as const) {
+      const result = await client[verb]("echo", { b: 1 }, { as: "text" });
+      assert.equal(typeof dataOf(result), "string", verb);
+      assert.equal(JSON.parse(dataOf(result)).method, verb.toUpperCase());
+    }
+    const result = await client.delete("echo", { as: "text" });
+    assert.equal(JSON.parse(dataOf(result)).method, "DELETE");
+  });
+
+  test("a problem document's failure is its Problem, as without the option", async () => {
+    assert.deepEqual(
+      await client.get("documents/9", { as: "text" }),
+      await client.get("documents/9"),
+    );
+    assert.equal(problemOf(await client.get("documents/9", { as: "text" })).detail, "no document");
+  });
+
+  test("any other failure is its about:blank Problem, as without the option", async () => {
+    assert.deepEqual(await client.get("crash", { as: "text" }), {
+      ok: false,
+      problem: { type: "about:blank", status: 500, title: "Internal Server Error" },
+    });
+  });
+
+  test("without the option, the same JSON body is parsed", async () => {
+    assert.deepEqual(await client.get("stored"), {
+      ok: true,
+      data: { title: "x", 2: [1, 2], 1: null },
+    });
+  });
+
+  test("types its data string under tsc, and refuses a type argument beside it", () => {
+    const source = [
+      `import { createClient } from "@jaimestill/spike-html-apps-sdk/api.js";`,
+      `const client = createClient();`,
+      `const text = await client.get("doc", { as: "text" });`,
+      `export const ok: string = text.ok ? text.data : "";`,
+      `export const bad: number = text.ok ? text.data : 0;`,
+      `export const typed = await client.get<{ id: number }>("doc", { as: "text" });`,
+      `const json = await client.get<{ id: number }>("doc");`,
+      `export const id: number = json.ok ? json.data.id : 0;`,
+      `const posted = await client.post("doc", {}, { as: "text" });`,
+      `export const post: string = posted.ok ? posted.data : "";`,
+      `const put = await client.put("doc", {}, { as: "text" });`,
+      `export const replaced: string = put.ok ? put.data : "";`,
+      `const patched = await client.patch("doc", {}, { as: "text" });`,
+      `export const patch: string = patched.ok ? patched.data : "";`,
+      `const deleted = await client.delete("doc", { as: "text" });`,
+      `export const gone: string = deleted.ok ? deleted.data : "";`,
+    ].join("\n");
+    assert.deepEqual(typecheck({ "text.ts": source }), ["text.ts:5 TS2322", "text.ts:6 TS2353"]);
   });
 });
 

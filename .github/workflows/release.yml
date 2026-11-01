@@ -35,7 +35,7 @@ jobs:
           fi
 
       - if: steps.version.outputs.released == 'false'
-        uses: jdx/mise-action@v5.2.4
+        uses: jdx/mise-action@v5.2.5
 
       - name: mise run install
         if: steps.version.outputs.released == 'false'

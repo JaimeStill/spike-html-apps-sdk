@@ -1,6 +1,6 @@
 {
   "name": "@jaimestill/spike-html-apps-sdk",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "license": "Apache-2.0",
   "type": "module",
   "files": [
@@ -46,11 +46,11 @@
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
-    "@jaimestill/spike-html-apps-tooling": "github:JaimeStill/spike-html-apps-tooling#v0.2.0",
+    "@jaimestill/spike-html-apps-tooling": "github:JaimeStill/spike-html-apps-tooling#v0.3.0",
     "@nats-io/jetstream": "3.4.0",
     "@nats-io/nats-core": "3.4.0",
     "@types/node": "26.6.6",
-    "eslint": "10.13.0",
+    "eslint": "10.14.0",
     "eslint-import-resolver-typescript": "4.4.5",
     "eslint-plugin-boundaries": "7.4.0",
     "eslint-plugin-import-x": "4.17.1",

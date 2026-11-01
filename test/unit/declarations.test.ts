@@ -315,6 +315,53 @@ export interface UploadOptions extends RequestOptions {
     reason: "a request body JSON.stringify can't encode is the client's encode problem, unsent",
   },
   {
+    file: "api.d.ts",
+    from: ` * body (a 204 or 205, or an empty body) undefined. */
+`,
+    to: ` * body (a 204 or 205, or an empty body) undefined. Under TextOptions a body is its text instead,
+ * whatever its type, and no body the empty string. */
+`,
+    reason: "a success's data is its text under TextOptions, which the result names",
+  },
+  {
+    file: "api.d.ts",
+    from: `/** An upload's options:`,
+    to: `/** A call's options with \`as: "text"\`, which reads a successful body as its text, decoded as UTF-8
+ * as Response.text() decodes it, whatever its content type: a JSON body's exact text, its
+ * whitespace and key order as stored, rather than its parsed value, and a JSON type's body that
+ * doesn't parse is its text, not the decode problem. No body is the empty string. A failing
+ * response is its Problem, as without the option. A call given these options takes no type
+ * argument: its data is a string. */
+export interface TextOptions extends RequestOptions {
+    as: "text";
+}
+/** An upload's options:`,
+    reason: 'a call\'s options gain as: "text", which reads a successful body as its text',
+  },
+  {
+    file: "api.d.ts",
+    from: ` *
+ * \`stream\` sends a POST`,
+    to: ` *
+ * \`get\`, \`post\`, \`put\`, \`patch\`, and \`delete\` each read a successful body as text under
+ * TextOptions, and decode it by its content type otherwise.
+ *
+ * \`stream\` sends a POST`,
+    reason: "the client's calls read a body as text under TextOptions",
+  },
+  ...(["get", "post", "put", "patch", "delete"] as const).map((verb) => {
+    const body = verb === "get" || verb === "delete" ? "" : "body: unknown, ";
+    const generic = `    ${verb}<T>(path: string, ${body.replace(":", "?:")}options?: RequestOptions): Promise<Result<T>>;
+`;
+    return {
+      file: "api.d.ts",
+      from: generic,
+      to: `    ${verb}(path: string, ${body}options: TextOptions): Promise<Result<string>>;
+${generic}`,
+      reason: `${verb} given TextOptions resolves to a string, by an overload before the generic one`,
+    };
+  }),
+  {
     file: "eventstream.d.ts",
     reason: "the event-stream parser, internal: the client's stream reads a response through it",
   },

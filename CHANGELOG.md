@@ -6,6 +6,23 @@ All notable changes to `@jaimestill/spike-html-apps-sdk` are documented here. Th
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-01
+
+### Added
+
+- `./api.js`: `TextOptions`, a call's options with `as: "text"`, under which `get`, `post`,
+  `put`, `patch`, and `delete` resolve a successful body to its text, typed `string` by an
+  overload, whatever its content type: a JSON body exactly as stored, its whitespace and key order
+  kept, and one that doesn't parse as its text rather than the decode problem; no body is the
+  empty string. A failing response is its `Problem`, as without the option.
+
+### Changed
+
+- Breaking: `Client`'s `get`, `post`, `put`, `patch`, and `delete` are each overloaded, so code
+  that implements `Client`, such as an app's test fake, must type each member's parameters, which
+  an overload doesn't give it, and its result must also serve the `Result<string>` overload: a
+  member generic in `T`, as `createClient`'s are, does. A caller's types are unchanged.
+
 ## [0.2.0] - 2026-10-28
 
 ### Added
@@ -54,6 +71,7 @@ All notable changes to `@jaimestill/spike-html-apps-sdk` are documented here. Th
 - The release by tag: `v<version>`, whose tree is the pack, with the tarball on its GitHub
   release.
 
-[Unreleased]: https://github.com/JaimeStill/spike-html-apps-sdk/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/JaimeStill/spike-html-apps-sdk/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/JaimeStill/spike-html-apps-sdk/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/JaimeStill/spike-html-apps-sdk/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/JaimeStill/spike-html-apps-sdk/releases/tag/v0.1.0
