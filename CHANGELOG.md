@@ -14,6 +14,13 @@ All notable changes to `@jaimestill/spike-html-apps-sdk` are documented here. Th
   kept, and one that doesn't parse as its text rather than the decode problem; no body is the
   empty string. A failing response is its `Problem`, as without the option.
 
+### Changed
+
+- Breaking: `Client`'s `get`, `post`, `put`, `patch`, and `delete` are each overloaded, so code
+  that implements `Client`, such as an app's test fake, must type each member's parameters, which
+  an overload doesn't give it, and its result must also serve the `Result<string>` overload: a
+  member generic in `T`, as `createClient`'s are, does. A caller's types are unchanged.
+
 ## [0.2.0] - 2026-10-28
 
 ### Added

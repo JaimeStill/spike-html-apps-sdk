@@ -409,7 +409,14 @@ describe('a success\'s body read as text, { as: "text" }', () => {
       `export const typed = await client.get<{ id: number }>("doc", { as: "text" });`,
       `const json = await client.get<{ id: number }>("doc");`,
       `export const id: number = json.ok ? json.data.id : 0;`,
-      `export const posted: string = (await client.post("doc", {}, { as: "text" })).ok ? "" : "";`,
+      `const posted = await client.post("doc", {}, { as: "text" });`,
+      `export const post: string = posted.ok ? posted.data : "";`,
+      `const put = await client.put("doc", {}, { as: "text" });`,
+      `export const replaced: string = put.ok ? put.data : "";`,
+      `const patched = await client.patch("doc", {}, { as: "text" });`,
+      `export const patch: string = patched.ok ? patched.data : "";`,
+      `const deleted = await client.delete("doc", { as: "text" });`,
+      `export const gone: string = deleted.ok ? deleted.data : "";`,
     ].join("\n");
     assert.deepEqual(typecheck({ "text.ts": source }), ["text.ts:5 TS2322", "text.ts:6 TS2353"]);
   });
