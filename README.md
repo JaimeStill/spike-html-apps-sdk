@@ -36,7 +36,11 @@ import type { Service } from "@jaimestill/spike-html-apps-sdk/service.js";
   `patch`, `delete`) take a request's `query`, `headers`, and `signal`, and resolve to a `Result`
   and never reject: the decoded data, or an RFC 9457 `Problem` with every extension member the
   server sent, or one the client made itself (`ClientProblemType`: network, abort, timeout,
-  decode, and encode). `stream` reads a text/event-stream response's `ServerSentEvent`s; `upload`
+  decode, and encode). A success's data is decoded by its content type: JSON parsed, `text/*` a
+  string, any other a `Blob`. Given `{ as: "text" }` (`TextOptions`), a call's data is instead the
+  body's text, typed `string`, whatever its content type: a JSON body exactly as stored, its
+  whitespace and key order kept, even when it doesn't parse; a failure is its `Problem` as
+  without it. `stream` reads a text/event-stream response's `ServerSentEvent`s; `upload`
   sends a body over XMLHttpRequest and reports its progress. A `TokenProvider` puts a bearer token
   on each request and is asked once to refresh on a 401. `Page` is a page of a list.
 - `./auth.js`: the `TokenProvider` hook and the `anonymous` default, which sends no token.

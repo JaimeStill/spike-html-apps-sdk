@@ -72,7 +72,8 @@ export class StreamError extends Error {
 
 /** A call's outcome: the decoded body, or the problem that stopped it. A body decodes by its content
  * type: JSON (application/json or any +json type) parsed, text/* a string, any other a Blob, and no
- * body (a 204 or 205, or an empty body) undefined. */
+ * body (a 204 or 205, or an empty body) undefined. Under TextOptions a body is its text instead,
+ * whatever its type, and no body the empty string. */
 export type Result<T> = { ok: true; data: T } | { ok: false; problem: Problem };
 
 /** go-web-sdk's paginated read envelope, the whole response body. `page` is the 1-based number of
@@ -98,6 +99,16 @@ export interface RequestOptions {
     Record<string, string | number | boolean | readonly (string | number | boolean)[] | undefined>
   >;
   headers?: Readonly<Record<string, string>>;
+}
+
+/** A call's options with `as: "text"`, which reads a successful body as its text, decoded as UTF-8
+ * as Response.text() decodes it, whatever its content type: a JSON body's exact text, its
+ * whitespace and key order as stored, rather than its parsed value, and a JSON type's body that
+ * doesn't parse is its text, not the decode problem. No body is the empty string. A failing
+ * response is its Problem, as without the option. A call given these options takes no type
+ * argument: its data is a string. */
+export interface TextOptions extends RequestOptions {
+  as: "text";
 }
 
 /** An upload's options: a call's, the method, POST by default or PUT, and `progress`, called with
@@ -126,6 +137,9 @@ export interface ClientOptions {
  * refresh. A FormData, Blob, ArrayBuffer or view, or URLSearchParams body is sent as it is; any
  * other body is sent as JSON.
  *
+ * `get`, `post`, `put`, `patch`, and `delete` each read a successful body as text under
+ * TextOptions, and decode it by its content type otherwise.
+ *
  * `stream` sends a POST with the body when it is given one and a GET when it isn't, with
  * `Accept: text/event-stream`, and resolves when the response's headers arrive, before its first
  * event: to the problem, as any call's, or to the events, read as they arrive. A 2xx response that
@@ -136,10 +150,15 @@ export interface ClientOptions {
  * and resolves as any call does, its data decoded and its problems made the same way. Where there
  * is no XMLHttpRequest (on Node, say) it resolves to the network problem. */
 export interface Client {
+  get(path: string, options: TextOptions): Promise<Result<string>>;
   get<T>(path: string, options?: RequestOptions): Promise<Result<T>>;
+  post(path: string, body: unknown, options: TextOptions): Promise<Result<string>>;
   post<T>(path: string, body?: unknown, options?: RequestOptions): Promise<Result<T>>;
+  put(path: string, body: unknown, options: TextOptions): Promise<Result<string>>;
   put<T>(path: string, body?: unknown, options?: RequestOptions): Promise<Result<T>>;
+  patch(path: string, body: unknown, options: TextOptions): Promise<Result<string>>;
   patch<T>(path: string, body?: unknown, options?: RequestOptions): Promise<Result<T>>;
+  delete(path: string, options: TextOptions): Promise<Result<string>>;
   delete<T>(path: string, options?: RequestOptions): Promise<Result<T>>;
   stream(
     path: string,
@@ -211,14 +230,16 @@ export function createClient(options: ClientOptions = {}): Client {
     return respond(path, body, request, send, accept);
   }
 
+  /** A call, its body read as text under TextOptions. Each verb is generic in T, so it serves both
+   * of the verb's overloads: T is string under TextOptions. */
   async function call<T>(
     method: string,
     path: string,
     body: unknown,
-    request: RequestOptions = {},
+    request: Partial<TextOptions> = {},
   ): Promise<Result<T>> {
     try {
-      return await decode<T>(await fetched(method, path, body, request));
+      return await decode<T>(await fetched(method, path, body, request), request.as);
     } catch (error) {
       return { ok: false, problem: failure(error, request.signal) };
     }
@@ -271,11 +292,17 @@ export function createClient(options: ClientOptions = {}): Client {
   }
 
   return {
-    get: (path, options) => call("GET", path, undefined, options),
-    post: (path, body, options) => call("POST", path, body, options),
-    put: (path, body, options) => call("PUT", path, body, options),
-    patch: (path, body, options) => call("PATCH", path, body, options),
-    delete: (path, options) => call("DELETE", path, undefined, options),
+    // An overloaded member gives its parameters no contextual type, so each is typed here.
+    get: <T>(path: string, options?: Partial<TextOptions>) =>
+      call<T>("GET", path, undefined, options),
+    post: <T>(path: string, body?: unknown, options?: Partial<TextOptions>) =>
+      call<T>("POST", path, body, options),
+    put: <T>(path: string, body?: unknown, options?: Partial<TextOptions>) =>
+      call<T>("PUT", path, body, options),
+    patch: <T>(path: string, body?: unknown, options?: Partial<TextOptions>) =>
+      call<T>("PATCH", path, body, options),
+    delete: <T>(path: string, options?: Partial<TextOptions>) =>
+      call<T>("DELETE", path, undefined, options),
     stream: (path, body, options) => stream(path, body, options),
     upload: (path, body, options) => upload(path, body, options),
   };
@@ -429,10 +456,12 @@ function isJSON(type: string): boolean {
   return type === "application/json" || type.endsWith("+json");
 }
 
-/** A response's Result: its body decoded by content type when it succeeded, its problem when it
- * didn't. */
-async function decode<T>(response: Response): Promise<Result<T>> {
+/** A response's Result: its body decoded by content type when it succeeded, or read as its text
+ * when `as` is "text", the empty string for no body; its problem when it didn't. */
+async function decode<T>(response: Response, as?: "text"): Promise<Result<T>> {
   if (!response.ok) return { ok: false, problem: await problem(response) };
+  // T is string here: only a TextOptions overload passes "text".
+  if (as === "text") return { ok: true, data: (await response.text()) as T };
   const type = mediaType(response);
   const blob = await response.blob();
   if (response.status === 204 || response.status === 205 || blob.size === 0) {

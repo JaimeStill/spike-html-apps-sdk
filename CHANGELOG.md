@@ -6,6 +6,14 @@ All notable changes to `@jaimestill/spike-html-apps-sdk` are documented here. Th
 
 ## [Unreleased]
 
+### Added
+
+- `./api.js`: `TextOptions`, a call's options with `as: "text"`, under which `get`, `post`,
+  `put`, `patch`, and `delete` resolve a successful body to its text, typed `string` by an
+  overload, whatever its content type: a JSON body exactly as stored, its whitespace and key order
+  kept, and one that doesn't parse as its text rather than the decode problem; no body is the
+  empty string. A failing response is its `Problem`, as without the option.
+
 ## [0.2.0] - 2026-10-28
 
 ### Added
