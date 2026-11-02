@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import { setTimeout as delay } from "node:timers/promises";
 import { describe, test } from "node:test";
 
+import { UnknownCursorError } from "@jaimestill/spike-html-apps-sdk/events.js";
 import type { CloudEvent, Cursor, EventSequence } from "@jaimestill/spike-html-apps-sdk/events.js";
 
 /** How long a test may run before it fails as a hang. */
@@ -33,6 +34,29 @@ export function cloudEvent(n: number, type = "lab.test.created"): CloudEvent<{ n
 /** `text` passed as a cursor, as an app that builds one would. The brand refuses a string under
  * tsc, so a case that hands a sequence a cursor it never gave out forges one here. */
 export const forged = (text: string) => text as Cursor;
+
+/** An assert.rejects check that the rejection is an UnknownCursorError, by class and by name, for
+ * the cursor `after`, and, when `message` is given, with that message. */
+export const unknownCursor = (after: string, message?: string) => (error: unknown) => {
+  assert.ok(error instanceof UnknownCursorError, `${error} isn't an UnknownCursorError`);
+  assert.equal(error.name, "UnknownCursorError");
+  assert.equal(error.cursor, after);
+  if (message !== undefined) assert.equal(error.message, message);
+  return true;
+};
+
+/** An assert.rejects check that the rejection is an Error but no UnknownCursorError, so an app
+ * retries from its cursor, its members those `expected` gives. */
+export const otherFailure =
+  (expected: Readonly<Record<string, unknown>> = {}) =>
+  (error: unknown) => {
+    assert.ok(error instanceof Error, `${error} isn't an Error`);
+    assert.ok(!(error instanceof UnknownCursorError), `${error} is an UnknownCursorError`);
+    for (const [member, value] of Object.entries(expected)) {
+      assert.equal((error as unknown as Record<string, unknown>)[member], value, member);
+    }
+    return true;
+  };
 
 /** The first `count` deliveries of `iterable`, the read then ended by a break. */
 async function take<T>(iterable: AsyncIterable<T>, count: number): Promise<T[]> {
@@ -221,12 +245,15 @@ export function sequenceContract(name: string, factory: Factory): void {
         },
       ));
 
-    test("a cursor the sequence never gave out fails the read", () =>
+    test("a cursor the sequence never gave out fails the read with an UnknownCursorError", () =>
       using([cloudEvent(1)], {}, async ({ sequence }) => {
-        await assert.rejects(take(sequence.read({ after: forged("not a cursor") }), 1), Error);
+        await assert.rejects(
+          take(sequence.read({ after: forged("not a cursor") }), 1),
+          unknownCursor("not a cursor"),
+        );
       }));
 
-    test("a cursor past the last event fails the read, and one at it waits for the next", async () => {
+    test("a cursor past the last event fails the read as unknown, and one at it waits for the next", async () => {
       // A cursor well-formed for the sequence, from another holding more events: the third event's,
       // which a sequence of one never gave out.
       let past: Cursor | undefined;
@@ -238,7 +265,7 @@ export function sequenceContract(name: string, factory: Factory): void {
         },
       );
       await using([cloudEvent(1)], {}, async ({ sequence, append }) => {
-        await assert.rejects(take(sequence.read({ after: past }), 1), Error);
+        await assert.rejects(take(sequence.read({ after: past }), 1), unknownCursor(past ?? ""));
         const [{ cursor: last }] = await take(sequence.read(), 1);
         const deliveries = sequence.read({ after: last })[Symbol.asyncIterator]();
         try {
