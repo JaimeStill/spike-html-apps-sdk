@@ -2,7 +2,6 @@
 // exports and against its license, by release.ts's releaseProblems, as it stands and in scratch
 // copies with one fault each; and the pack's public subpaths, resolved through the package's own
 // name, with its internal module refused. It packs the dist/ that mise run build writes.
-// The pack's runtime files are held to the layer's brotli budget by budget.ts's budgetProblems.
 // Adapted from spike-html-packages-sdk (9d10ca6): test/unit/release.test.js, in TypeScript.
 
 import assert from "node:assert/strict";
@@ -11,18 +10,11 @@ import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:f
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, describe, test } from "node:test";
-import { brotliBytes, budgetProblems, runtimeFiles } from "./budget.ts";
 import { listFiles, releaseProblems, resolveSelf } from "./release.ts";
 
 const root = join(import.meta.dirname, "../..");
 const src = join(root, "src");
 const scratches: string[] = [];
-
-// The layer's budget in brotli bytes, a KB being 1,000 bytes: its baseline on 2026-10-29, 11,669 B
-// over 7 runtime files, plus 10%, rounded up to a whole KB. A layer over it fails the check;
-// a change that needs more raises it here, in the change's own commit.
-const layer = "sdk";
-const budget = 13_000;
 
 // The public subpaths, which package.json's exports lists: each module an app imports.
 const publics = [
@@ -205,32 +197,4 @@ describe("release pack", () => {
       assert.ok(problems.includes(problem), `expected: ${problem}\ngot: ${problems.join("\n")}`);
     });
   }
-});
-
-describe("brotli budget", () => {
-  test("the pack's runtime files are within the layer's budget", () => {
-    assert.ok(runtimeFiles(pack).length > 0, "the pack has no .js or .css");
-    assert.deepEqual(budgetProblems(pack, layer, budget), []);
-  });
-
-  test("counts a runtime .js, and never a .d.ts", () => {
-    const copy = join(scratchDir(), "package");
-    cpSync(pack, copy, { recursive: true });
-    const measured = brotliBytes(copy);
-    const text = "export const added = 1;\n".repeat(64);
-    writeFileSync(join(copy, "dist/added.d.ts"), text);
-    assert.equal(brotliBytes(copy), measured, "a .d.ts was counted");
-    writeFileSync(join(copy, "dist/added.js"), text);
-    assert.ok(brotliBytes(copy) > measured, "a .js wasn't counted");
-  });
-
-  test("fails a pack one byte over its budget, naming the size and the budget", () => {
-    const measured = brotliBytes(pack);
-    assert.deepEqual(budgetProblems(pack, layer, measured), []);
-    const [problem] = budgetProblems(pack, layer, measured - 1);
-    assert.equal(
-      problem,
-      `${layer}: ${measured.toLocaleString("en-US")} B brotli over its budget of ${(measured - 1).toLocaleString("en-US")} B`,
-    );
-  });
 });

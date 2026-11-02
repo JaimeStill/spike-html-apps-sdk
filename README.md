@@ -75,11 +75,11 @@ mise run currency   # report every tool, package, action pin, and tooling tag be
 
 The check runs two test tiers on the build. The unit tier runs under `node --test`: the client
 against a loopback server, the event-stream parser, the emitted declarations against v0.1.0's,
-the layer's import rules, a pack of the build and its brotli budget, the event-sequence contract,
-and the NATS adapter against the pinned `nats-server`, which the tier starts itself. The browser
-tier runs the router and the upload in the pinned `chrome-headless-shell`, on the driver and
-server of [spike-html-apps-tooling](https://github.com/JaimeStill/spike-html-apps-tooling), a
-devDependency at its release tag. `mise run install` installs both pins.
+the layer's import rules, a pack of the build, the event-sequence contract, and the NATS adapter
+against the pinned `nats-server`, which the tier starts itself. The browser tier runs the router
+and the upload in the pinned `chrome-headless-shell`, on the driver and server of
+[spike-html-apps-tooling](https://github.com/JaimeStill/spike-html-apps-tooling), a devDependency
+at its release tag. `mise run install` installs both pins.
 
 A push to main whose `package.json` version has no tag yet releases it: the check, then the pack
 committed and tagged, and a GitHub release from `CHANGELOG.md`.
