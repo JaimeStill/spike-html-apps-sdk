@@ -6,7 +6,7 @@ All notable changes to `@jaimestill/spike-html-apps-sdk` are documented here. Th
 
 ## [Unreleased]
 
-## [0.3.1] - 2026-11-01
+## [0.3.1] - 2026-11-02
 
 ### Removed
 
