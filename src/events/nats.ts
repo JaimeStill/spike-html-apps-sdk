@@ -123,9 +123,9 @@ function decode(msg: JsMsg): CloudEvent {
  * stream keeps, or from the stream sequence after the cursor, which the server moves up to the
  * oldest kept when it is gone. A cursor is the delivered message's stream sequence as a decimal
  * string; any string that isn't a positive decimal integer, or one past the stream's last sequence,
- * fails the read with an UnknownCursorError. A read's `types` are its consumer's filter subjects, since an event's type is
- * its subject, and the read also checks each event's type against them, so a type holding a NATS
- * wildcard still matches exactly.
+ * fails the read with an UnknownCursorError. A read's `types` are its consumer's filter subjects,
+ * since an event's type is its subject, and the read also checks each event's type against them, so
+ * a type holding a NATS wildcard still matches exactly.
  *
  * The reads share one connection, opened by the first and reopened by a read after it is lost.
  * Across a server restart the connection reconnects (nats-core's defaults: 10 attempts, 2 s

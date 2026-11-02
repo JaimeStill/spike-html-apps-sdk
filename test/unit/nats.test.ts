@@ -205,14 +205,17 @@ describe("the NATS sequence's connection", { timeout: 15000 }, () => {
   test("close() ends a waiting read quietly, and a read after it fails", () =>
     using([cloudEvent(1)], {}, async ({ sequence }) => {
       const deliveries = sequence.read()[Symbol.asyncIterator]();
-      await deliveries.next();
+      const first = await deliveries.next();
       const next = deliveries.next();
       await sequence.close();
       assert.deepEqual(await next, { done: true, value: undefined });
-      await assert.rejects(
-        take(sequence.read(), 1),
-        otherFailure({ message: "the NATS sequence is closed" }),
-      );
+      // From no cursor and from one the sequence gave out: neither fails as an unknown cursor.
+      for (const after of [undefined, first.value?.cursor]) {
+        await assert.rejects(
+          take(sequence.read({ after }), 1),
+          otherFailure({ message: "the NATS sequence is closed" }),
+        );
+      }
     }));
 
   test("a cursor that isn't a positive decimal integer fails the read", () =>
