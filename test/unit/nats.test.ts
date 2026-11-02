@@ -23,7 +23,13 @@ import type { CloudEvent } from "@jaimestill/spike-html-apps-sdk/events.js";
 import { natsSequence } from "@jaimestill/spike-html-apps-sdk/events/nats.js";
 
 import { startServer, type NatsServer } from "./nats-server.ts";
-import { cloudEvent, forged, sequenceContract } from "./sequence-contract.ts";
+import {
+  cloudEvent,
+  forged,
+  otherFailure,
+  sequenceContract,
+  unknownCursor,
+} from "./sequence-contract.ts";
 
 const root = join(import.meta.dirname, "../..");
 const secret = "nats-tier-token";
@@ -159,7 +165,7 @@ describe("the NATS sequence's connection", { timeout: 15000 }, () => {
     const servers = `ws://127.0.0.1:${server.clientPort}`;
     const sequence = natsSequence({ servers, stream, token: authorized });
     try {
-      await assert.rejects(take(sequence.read(), 1), Error);
+      await assert.rejects(take(sequence.read(), 1), otherFailure());
     } finally {
       await sequence.close();
       await jsm.streams.delete(stream);
@@ -168,9 +174,10 @@ describe("the NATS sequence's connection", { timeout: 15000 }, () => {
 
   test("a refused token whose refresh gives none fails the read", () =>
     using([cloudEvent(1)], { token: anonymous }, async ({ sequence }) => {
-      await assert.rejects(take(sequence.read(), 1), {
-        message: "the NATS server refused the token, and its refresh gave none",
-      });
+      await assert.rejects(
+        take(sequence.read(), 1),
+        otherFailure({ message: "the NATS server refused the token, and its refresh gave none" }),
+      );
     }));
 
   test("a refused token is refreshed once, and the read goes on with the new one", async () => {
@@ -190,7 +197,7 @@ describe("the NATS sequence's connection", { timeout: 15000 }, () => {
     let refreshes = 0;
     const token = { token: async () => "stale", refresh: async () => (refreshes++, "staler") };
     await using([cloudEvent(1)], { token }, async ({ sequence }) => {
-      await assert.rejects(take(sequence.read(), 1), { name: "AuthorizationError" });
+      await assert.rejects(take(sequence.read(), 1), otherFailure({ name: "AuthorizationError" }));
       assert.equal(refreshes, 1);
     });
   });
@@ -202,15 +209,19 @@ describe("the NATS sequence's connection", { timeout: 15000 }, () => {
       const next = deliveries.next();
       await sequence.close();
       assert.deepEqual(await next, { done: true, value: undefined });
-      await assert.rejects(take(sequence.read(), 1), { message: "the NATS sequence is closed" });
+      await assert.rejects(
+        take(sequence.read(), 1),
+        otherFailure({ message: "the NATS sequence is closed" }),
+      );
     }));
 
   test("a cursor that isn't a positive decimal integer fails the read", () =>
     using([cloudEvent(1)], {}, async ({ sequence }) => {
       for (const after of ["0", "01", "-1", "1.5", "1e3", " 1", "9007199254740993"]) {
-        await assert.rejects(take(sequence.read({ after: forged(after) }), 1), {
-          message: `the NATS sequence gave out no cursor ${JSON.stringify(after)}`,
-        });
+        await assert.rejects(
+          take(sequence.read({ after: forged(after) }), 1),
+          unknownCursor(after, `the NATS sequence gave out no cursor ${JSON.stringify(after)}`),
+        );
       }
     }));
 
@@ -220,9 +231,10 @@ describe("the NATS sequence's connection", { timeout: 15000 }, () => {
       {},
       async ({ sequence, append }) => {
         for (const after of ["4", "1000"]) {
-          await assert.rejects(take(sequence.read({ after: forged(after) }), 1), {
-            message: `the NATS sequence gave out no cursor ${JSON.stringify(after)}`,
-          });
+          await assert.rejects(
+            take(sequence.read({ after: forged(after) }), 1),
+            unknownCursor(after, `the NATS sequence gave out no cursor ${JSON.stringify(after)}`),
+          );
         }
         const deliveries = sequence.read({ after: forged("3") })[Symbol.asyncIterator]();
         try {
@@ -326,7 +338,9 @@ describe("the NATS sequence's decoding", { timeout: 15000 }, () => {
         (async () => {
           for await (const { event } of sequence.read()) seen.push(event.id);
         })(),
-        { message: 'the event "broken" has data that doesn\'t decode as application/json' },
+        otherFailure({
+          message: 'the event "broken" has data that doesn\'t decode as application/json',
+        }),
       );
       assert.deepEqual(seen, ["good"]);
     }));
@@ -335,17 +349,23 @@ describe("the NATS sequence's decoding", { timeout: 15000 }, () => {
     using([], {}, async ({ sequence }) => {
       const event = { ...base, id: "bad-utf8", datacontenttype: "text/plain" };
       await publish(event, new Uint8Array([0x61, 0xff, 0x62]));
-      await assert.rejects(take(sequence.read(), 1), {
-        message: 'the event "bad-utf8" has data that doesn\'t decode as text/plain',
-      });
+      await assert.rejects(
+        take(sequence.read(), 1),
+        otherFailure({
+          message: 'the event "bad-utf8" has data that doesn\'t decode as text/plain',
+        }),
+      );
     }));
 
   test("a message that isn't a CloudEvent ends the read", () =>
     using([], {}, async ({ sequence }) => {
       await js.publish("lab.test.plain", encoder.encode("not an event"));
-      await assert.rejects(take(sequence.read(), 1), {
-        message: "the stream's message 1 isn't a CloudEvents 1.0 event in binary content mode",
-      });
+      await assert.rejects(
+        take(sequence.read(), 1),
+        otherFailure({
+          message: "the stream's message 1 isn't a CloudEvents 1.0 event in binary content mode",
+        }),
+      );
     }));
 });
 

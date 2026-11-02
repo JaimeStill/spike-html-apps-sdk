@@ -367,7 +367,7 @@ ${generic}`,
   },
   {
     file: "events.d.ts",
-    reason: "the event-sequence interface: a CloudEvent, its opaque cursor, and the sequence read",
+    reason: "the event-sequence interface: a CloudEvent, its cursor, the sequence read, its error",
   },
   {
     file: "events/nats.d.ts",

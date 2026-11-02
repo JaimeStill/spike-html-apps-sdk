@@ -3,6 +3,7 @@
 // the package: test/unit/events.test.ts runs the sequence contract against it, and type-checks it
 // with tsc.
 
+import { UnknownCursorError } from "@jaimestill/spike-html-apps-sdk/events.js";
 import type {
   CloudEvent,
   Cursor,
@@ -19,7 +20,8 @@ export interface MemoryOptions {
 
 /** An in-memory sequence holding `events`, in order, and the append that adds one, waking every
  * read that waits. Its cursor is an event's position, from 1, as a decimal string: one never given
- * out (not a position, or past the last event appended) is unknown, and fails the read. */
+ * out (not a position, or past the last event appended) is unknown, and fails the read with an
+ * UnknownCursorError. */
 export function memorySequence(events: readonly CloudEvent[] = [], options: MemoryOptions = {}) {
   // The events kept, oldest first, and the position of the first.
   const kept: CloudEvent[] = [];
@@ -57,7 +59,7 @@ export function memorySequence(events: readonly CloudEvent[] = [], options: Memo
     if (after !== undefined) {
       const position = /^[1-9]\d*$/.test(after) ? Number(after) : 0;
       if (position === 0 || position >= first + kept.length) {
-        throw new Error(`the sequence gave out no cursor ${JSON.stringify(after)}`);
+        throw new UnknownCursorError(after);
       }
       next = position + 1;
     }

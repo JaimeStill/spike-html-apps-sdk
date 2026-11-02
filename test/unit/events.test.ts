@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
 import { memorySequence } from "./memory-sequence.ts";
-import { cloudEvent, forged, sequenceContract } from "./sequence-contract.ts";
+import { cloudEvent, forged, sequenceContract, unknownCursor } from "./sequence-contract.ts";
 import { typecheck } from "./typecheck.ts";
 
 sequenceContract("the in-memory sequence", (events, options) => memorySequence(events, options));
@@ -15,9 +15,10 @@ describe("the in-memory sequence's cursors", () => {
   test("a cursor past the last event appended fails the read", async () => {
     const { sequence } = memorySequence([cloudEvent(1)]);
     const after = forged("2");
-    await assert.rejects(sequence.read({ after })[Symbol.asyncIterator]().next(), {
-      message: 'the sequence gave out no cursor "2"',
-    });
+    await assert.rejects(
+      sequence.read({ after })[Symbol.asyncIterator]().next(),
+      unknownCursor("2", 'the sequence gave out no cursor "2"'),
+    );
   });
 
   test("the cursor of an event no longer kept is still one the sequence gave out", async () => {

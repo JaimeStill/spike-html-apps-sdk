@@ -1,8 +1,8 @@
 // The application SDK's event-sequence interface: a CloudEvent, the opaque cursor that marks a place
 // in a sequence, and the sequence an app reads, from its oldest kept event or from after a cursor,
-// live as events are appended. It is the contract only, types with no runtime and no dependency:
-// an implementation (the NATS adapter, a test's in-memory sequence) meets the semantics its doc
-// comments state.
+// live as events are appended. It is the contract only, types and the one error a read's start
+// rejects with, with no dependency: an implementation (the NATS adapter, a test's in-memory
+// sequence) meets the semantics its doc comments state.
 
 /** A CloudEvent (CloudEvents 1.0), its context attributes as members and its payload as `data`. The
  * four required attributes are always present; the optional ones are absent when the event has
@@ -59,7 +59,8 @@ export interface ReadOptions {
   /** Where the read starts: absent, at the oldest event the sequence keeps; given, at the event
    * after the one this cursor marks. A cursor whose event the sequence no longer keeps starts at
    * the oldest event it does. A cursor the sequence never gave out fails the read: its iteration
-   * rejects with an Error. */
+   * rejects with an UnknownCursorError, which tells an app to forget the cursor and read from the
+   * oldest event, rather than retry from it. */
   readonly after?: Cursor;
   /** The event types the read delivers, each matched exactly against an event's `type`; the events
    * of any other type are skipped, their cursors with them. Absent or empty, every type. */
@@ -67,6 +68,26 @@ export interface ReadOptions {
   /** Ends the read when it aborts: the iteration finishes, without a rejection, whether it is
    * waiting for an event or not. A signal already aborted delivers nothing. */
   readonly signal?: AbortSignal;
+}
+
+/** The error a read rejects with when its start cursor, `after`, is one the sequence never gave out
+ * (a cursor from another sequence, say, or one an app stored before the sequence was recreated).
+ * Reading again from it fails the same way, so an app that holds it forgets it and reads from the
+ * oldest event. `cursor` is the `after` the read was given. It is the one error the contract
+ * names: every other failure of a read is a plain Error. */
+export class UnknownCursorError extends Error {
+  readonly cursor: Cursor;
+
+  /** An UnknownCursorError for `cursor`, its message `message`, by default one that names the
+   * cursor. */
+  constructor(
+    cursor: Cursor,
+    message = `the sequence gave out no cursor ${JSON.stringify(cursor)}`,
+  ) {
+    super(message);
+    this.name = "UnknownCursorError";
+    this.cursor = cursor;
+  }
 }
 
 /** An append-only sequence of CloudEvents that an app reads. A read delivers events in the
@@ -77,7 +98,8 @@ export interface ReadOptions {
  * one ending ends no other. */
 export interface EventSequence<T = unknown> {
   /** Reads the sequence, its deliveries an async iterable that runs until the read ends. It fails
-   * only as ReadOptions says, and when the sequence itself fails (its connection lost, say), by
-   * rejecting the iteration with an Error. */
+   * only as ReadOptions says, with an UnknownCursorError, and when the sequence itself fails (its
+   * connection lost, say), by rejecting the iteration with an Error that is no UnknownCursorError,
+   * after which a read from the same cursor may succeed. */
   read(options?: ReadOptions): AsyncIterable<Delivery<T>>;
 }

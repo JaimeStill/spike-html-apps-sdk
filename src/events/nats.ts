@@ -10,6 +10,7 @@ import type { ConsumerMessages, JsMsg, OrderedConsumerOptions } from "@nats-io/j
 
 import type { TokenProvider } from "../auth.ts";
 import { anonymous } from "../auth.ts";
+import { UnknownCursorError } from "../events.ts";
 import type { CloudEvent, Cursor, Delivery, EventSequence, ReadOptions } from "../events.ts";
 
 /** How a NATS sequence is made: the servers it connects to, the stream it reads, and where its
@@ -49,12 +50,15 @@ const attributes = new Set([
 /** A cursor this adapter writes: a stream sequence, a positive decimal integer. */
 const cursorPattern = /^[1-9][0-9]*$/;
 
-/** The stream sequence `cursor` marks; throws on a string the adapter never writes. */
-function sequenceOf(cursor: string): number {
+/** The UnknownCursorError for `cursor`, a cursor the adapter never gave out. */
+const unknown = (cursor: Cursor) =>
+  new UnknownCursorError(cursor, `the NATS sequence gave out no cursor ${JSON.stringify(cursor)}`);
+
+/** The stream sequence `cursor` marks; throws an UnknownCursorError on a string the adapter never
+ * writes. */
+function sequenceOf(cursor: Cursor): number {
   const seq = Number(cursor);
-  if (!cursorPattern.test(cursor) || !Number.isSafeInteger(seq)) {
-    throw new Error(`the NATS sequence gave out no cursor ${JSON.stringify(cursor)}`);
-  }
+  if (!cursorPattern.test(cursor) || !Number.isSafeInteger(seq)) throw unknown(cursor);
   return seq;
 }
 
@@ -119,7 +123,7 @@ function decode(msg: JsMsg): CloudEvent {
  * stream keeps, or from the stream sequence after the cursor, which the server moves up to the
  * oldest kept when it is gone. A cursor is the delivered message's stream sequence as a decimal
  * string; any string that isn't a positive decimal integer, or one past the stream's last sequence,
- * fails the read. A read's `types` are its consumer's filter subjects, since an event's type is
+ * fails the read with an UnknownCursorError. A read's `types` are its consumer's filter subjects, since an event's type is
  * its subject, and the read also checks each event's type against them, so a type holding a NATS
  * wildcard still matches exactly.
  *
@@ -196,9 +200,7 @@ export function natsSequence<T = unknown>(options: NatsSequenceOptions): NatsSeq
       // it is accepted, whether or not the stream still keeps its message: the server starts the
       // consumer at the oldest kept. Only a read with a cursor pays for the stream info request.
       const { state } = await (await js.jetstreamManager(false)).streams.info(stream);
-      if (start > state.last_seq) {
-        throw new Error(`the NATS sequence gave out no cursor ${JSON.stringify(after)}`);
-      }
+      if (start > state.last_seq) throw unknown(after as Cursor);
     }
     const consumerOptions: Partial<OrderedConsumerOptions> =
       start === undefined

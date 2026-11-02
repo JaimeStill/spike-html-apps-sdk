@@ -6,6 +6,23 @@ All notable changes to `@jaimestill/spike-html-apps-sdk` are documented here. Th
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-02
+
+### Added
+
+- `./events.js`: `UnknownCursorError`, the error a read rejects with when its start cursor,
+  `after`, is one the sequence never gave out, its `name` `"UnknownCursorError"` and its `cursor`
+  that `after`, so an app tells a cursor to forget, reading from the oldest event, from a failure
+  to retry from the same cursor.
+- `./events.js`: the contract's guarantee that an unknown start cursor is the one failure a read
+  rejects with an `UnknownCursorError`: every other failure, a lost connection or a refused token
+  among them, is a plain `Error`.
+
+### Changed
+
+- `./events/nats.js`: `natsSequence` rejects a read with an `UnknownCursorError` for a cursor that
+  isn't a positive decimal integer or is past the stream's last sequence, its message unchanged.
+
 ## [0.3.0] - 2026-11-01
 
 ### Added
@@ -71,7 +88,8 @@ All notable changes to `@jaimestill/spike-html-apps-sdk` are documented here. Th
 - The release by tag: `v<version>`, whose tree is the pack, with the tarball on its GitHub
   release.
 
-[Unreleased]: https://github.com/JaimeStill/spike-html-apps-sdk/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/JaimeStill/spike-html-apps-sdk/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/JaimeStill/spike-html-apps-sdk/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/JaimeStill/spike-html-apps-sdk/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/JaimeStill/spike-html-apps-sdk/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/JaimeStill/spike-html-apps-sdk/releases/tag/v0.1.0
