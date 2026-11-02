@@ -70,11 +70,13 @@ export interface ReadOptions {
   readonly signal?: AbortSignal;
 }
 
-/** The error a read rejects with when its start cursor, `after`, is one the sequence never gave out
- * (a cursor from another sequence, say, or one an app stored before the sequence was recreated).
- * Reading again from it fails the same way, so an app that holds it forgets it and reads from the
- * oldest event. `cursor` is the `after` the read was given. It is the one error the contract
- * names: every other failure of a read is a plain Error. */
+/** The error a read rejects with when its start cursor, `after`, is one the sequence can tell it
+ * never gave out: the NATS adapter knows a cursor that isn't a sequence number, or one past the
+ * stream's last event. A cursor stored before the stream was recreated, and at or below the new
+ * stream's last event, looks like one it gave out, and the read resumes after it; no adapter here
+ * detects a recreated stream. Reading again from an unknown cursor fails the same way, so an app
+ * that holds it forgets it and reads from the oldest event. `cursor` is the `after` the read was
+ * given. It is the one error the contract names: every other failure of a read is a plain Error. */
 export class UnknownCursorError extends Error {
   readonly cursor: Cursor;
 
