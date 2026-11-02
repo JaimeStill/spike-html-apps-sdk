@@ -6,6 +6,14 @@ All notable changes to `@jaimestill/spike-html-apps-sdk` are documented here. Th
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-11-01
+
+### Removed
+
+- The unit tier's brotli budget check, which failed the check when the pack's runtime files, each
+  compressed alone with brotli, summed over 13,000 B. The layer's size is now measured, at the end
+  of a session's work, not enforced per commit.
+
 ## [0.3.0] - 2026-11-01
 
 ### Added
@@ -71,7 +79,8 @@ All notable changes to `@jaimestill/spike-html-apps-sdk` are documented here. Th
 - The release by tag: `v<version>`, whose tree is the pack, with the tarball on its GitHub
   release.
 
-[Unreleased]: https://github.com/JaimeStill/spike-html-apps-sdk/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/JaimeStill/spike-html-apps-sdk/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/JaimeStill/spike-html-apps-sdk/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/JaimeStill/spike-html-apps-sdk/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/JaimeStill/spike-html-apps-sdk/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/JaimeStill/spike-html-apps-sdk/releases/tag/v0.1.0

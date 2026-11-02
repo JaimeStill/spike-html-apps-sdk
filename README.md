@@ -12,9 +12,9 @@ Each release is a tag, `v<version>`, whose tree is the package as `pnpm pack` bu
 `package.json`, this README, the LICENSE, and `dist/`. Install it by the tag:
 
 ```
-npm install --allow-git=root github:JaimeStill/spike-html-apps-sdk#v0.3.0
-pnpm add github:JaimeStill/spike-html-apps-sdk#v0.3.0
-bun add github:JaimeStill/spike-html-apps-sdk#v0.3.0
+npm install --allow-git=root github:JaimeStill/spike-html-apps-sdk#v0.3.1
+pnpm add github:JaimeStill/spike-html-apps-sdk#v0.3.1
+bun add github:JaimeStill/spike-html-apps-sdk#v0.3.1
 ```
 
 npm 12 refuses git dependencies unless `--allow-git` allows them; `root` allows the ones the
@@ -75,7 +75,7 @@ mise run currency   # report every tool, package, action pin, and tooling tag be
 
 The check runs two test tiers on the build. The unit tier runs under `node --test`: the client
 against a loopback server, the event-stream parser, the emitted declarations against v0.1.0's,
-the layer's import rules, a pack of the build and its brotli budget, the event-sequence contract,
+the layer's import rules, a pack of the build, the event-sequence contract,
 and the NATS adapter against the pinned `nats-server`, which the tier starts itself. The browser
 tier runs the router and the upload in the pinned `chrome-headless-shell`, on the driver and
 server of [spike-html-apps-tooling](https://github.com/JaimeStill/spike-html-apps-tooling), a
